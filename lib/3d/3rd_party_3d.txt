@@ -1,0 +1,7 @@
+This folder holds third party 3D models.
+
+I am unsure of licensing, so will leave links here instead
+
+Type C	https://grabcad.com/library/type-c-31-m-12-1
+ESP32	https://grabcad.com/library/esp-wroom-32-esp32-1
+SCD30	https://sensirion.com/products/catalog/SCD30

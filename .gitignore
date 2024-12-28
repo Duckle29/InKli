@@ -1,0 +1,7 @@
+lib/3d/*
+!lib/3d/3rd_party_3d.txt
+scd30_esp.step
+*.lck
+*_autosave*
+*auto_saved*
+*-backups
