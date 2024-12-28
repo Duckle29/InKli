@@ -4903,7 +4903,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
 			(at 125.73 78.74 0)
 			(effects
 				(font
@@ -5973,7 +5973,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
 			(at 125.73 60.96 0)
 			(effects
 				(font
