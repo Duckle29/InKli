@@ -1,5 +1,6 @@
-lib/*
+lib/3d/*
 !lib/3d/3rd_party_3d.txt
+lib/footprints/*
 !lib/footprints/3rd_party_footprints.txt
 scd30_esp.step
 *.lck
