@@ -1,0 +1,157 @@
+substitutions:
+  name: scd30-epaper
+  friendly_name: SCD30 with Display
+  sensor_prefix: TestRoom_
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+  flash_size: 4MB
+
+# Everything below here goes below the standard generated yaml file ESPhome will generate when you make a new device
+i2c:
+  - id: i2c_bus_a
+    sda: GPIO21
+    scl: GPIO22
+    scan: False
+  
+  - id: i2c_qwiic 
+    sda: GPIO26
+    scl: GPIO27
+    scan: True
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+
+globals:
+  - id: initialized
+    type: bool
+    restore_value: False
+    initial_value: "0"
+
+esp32_touch:
+  setup_mode: false
+
+binary_sensor:
+  - platform: esp32_touch
+    id: "touch_sensor"
+    pin: GPIO33
+    threshold: 1000
+    wakeup_threshold: 1000
+    internal: True
+
+  - platform: gpio
+    id: "btn"
+    pin:
+      number: GPIO32
+      inverted: True
+      allow_other_uses: True
+    internal: True
+
+sensor:
+  - platform: scd30
+    i2c_id: i2c_bus_a
+    update_interval: 60s
+    temperature:
+      id: sens_t
+      name: ${sensor_prefix}_temp
+      accuracy_decimals: 1
+    humidity:
+      id: sens_rh
+      name: ${sensor_prefix}_rel_humi
+      accuracy_decimals: 1
+    co2:
+      id: sens_co2
+      name: ${sensor_prefix}co2
+      accuracy_decimals: 0
+      on_value: 
+        then:
+          - if:
+              condition:
+                lambda: 'return !id(initialized);'
+              then: 
+                - component.update: disp
+                - globals.set: 
+                    id: initialized
+                    value: "1"
+
+graph:
+  - id: co2_graph
+    height: 61
+    width: 220
+    duration: 
+      days: 0
+      hours: 8
+    border: True
+    y_grid: 500
+    traces:
+      - sensor: sens_co2
+        line_type: SOLID
+        line_thickness: 2
+        continuous: True
+
+font:
+  # gfonts://family[@weight]
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 700
+    id: literata_b
+    size: 25
+    extras:
+      - file: "gfonts://Material+Symbols+Outlined"
+        glyphs: [
+          "\ue1ff", # Thermometer
+          "\uf87e", # Humidity %
+          "\ue7b0", # CO2
+        ]
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 700
+    id: literata_med_b
+    size: 20
+
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 400
+    id: literata_smol
+    size: 13
+
+display:
+  - platform: waveshare_epaper
+    id: disp
+    cs_pin: GPIO5
+    dc_pin: GPIO17
+    reset_pin: GPIO16
+    busy_pin: GPIO4
+    model: 2.13inv3
+    full_update_every: 30
+    rotation: 270
+    update_interval: 60s
+    pages: 
+      - id: home_screen
+        lambda: |-
+          if(id(sens_co2).has_state())
+          {
+            it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
+            it.printf(it.get_width()/2 -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
+            it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_co2).state);
+
+            int co2_val = id(sens_co2).state;
+            int graph_lim = (int((co2_val + 1) / 500)+1) * 500;
+            it.printf(it.get_width()-220, 61, id(literata_smol), TextAlign::CENTER_RIGHT, "%d", graph_lim);
+            it.graph(it.get_width()-220, 61, id(co2_graph));
+
+          } else {
+            it.print(it.get_width()/2, it.get_height()/2, id(literata_b), TextAlign::CENTER, "Starting");
+          }
+  
+  
