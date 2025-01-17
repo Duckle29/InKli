@@ -1,5 +1,0 @@
-This folder holds third party footprints
-
-I am unsure of licensing, so will leave links here instead
-
-FPC	https://www.amphenol-cs.com/product/sfv24r3ste1hlf.html

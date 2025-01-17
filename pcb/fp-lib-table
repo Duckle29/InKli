@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "FCI fpc")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints/AMPHENOL_SFV24R-xSTE1HLF.pretty")(options "")(descr ""))
+)
