@@ -8255,6 +8255,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C511094"
+			(at 251.46 32.9564 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "6e89089b-c3b2-41eb-8631-2187a73833a7")
 		)
@@ -11197,6 +11206,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C2286"
+			(at 156.21 173.736 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "61a5da7c-867e-4f6c-8849-96eaca56b1d5")
 		)
@@ -12099,6 +12117,15 @@
 		)
 		(property "Description" "Light emitting diode, small symbol"
 			(at 248.92 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C511094"
+			(at 251.46 83.7564 0)
 			(effects
 				(font
 					(size 1.27 1.27)

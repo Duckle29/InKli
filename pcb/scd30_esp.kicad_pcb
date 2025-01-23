@@ -3939,7 +3939,7 @@
 		(path "/88b4923f-ccaa-4b37-9cda-0b8fdff66a06")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start -0.727064 -0.91)
 			(end 0.727064 -0.91)
@@ -4897,7 +4897,7 @@
 		(path "/0ef0a939-c18f-4856-8e87-70ba8c98be64")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start -3.11 -1.785)
 			(end -2.06 -1.785)
@@ -5946,7 +5946,7 @@
 		(path "/e619c63c-0d24-4331-a713-1b44a89d30d0")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start 0 -1.56)
 			(end -0.65 -1.56)
@@ -7514,7 +7514,7 @@
 		(path "/9cce7f5d-a639-4371-83ca-2e1680b57bc2")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start -0.727064 0.91)
 			(end 0.727064 0.91)
@@ -7714,6 +7714,18 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "5ab3c4ef-9f4d-42da-b4ff-2fa9f846e617")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C701342"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "019bbf55-3900-40ee-865e-58a50f72bfa8")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8707,6 +8719,18 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "8d76eff3-18d2-4099-80ce-34d5aac3d84a")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C223228"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "9b6a4530-2f09-4813-a477-8bdfb5417680")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10918,7 +10942,7 @@
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
 		(clearance 0.25)
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start -1.35 1.425)
 			(end -1.35 0.9)
@@ -13253,7 +13277,7 @@
 		(path "/53a02eb5-4f0b-4c68-8b5d-c8ad4a42392f")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr through_hole)
+		(attr through_hole exclude_from_pos_files)
 		(fp_line
 			(start 5.14 1.5)
 			(end 0.05 1.5)
@@ -13751,7 +13775,7 @@
 		(path "/b0a23fe6-017a-43d5-8862-0f1c86211780")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start 0 1.56)
 			(end -0.65 1.56)
@@ -14231,6 +14255,18 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "89b01f03-1bbb-4246-a275-f6958a7015bc")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C469327"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "f62fadb7-b380-4c59-99fa-7e7217f36fc2")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -15227,7 +15263,7 @@
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
 		(clearance 0.25)
-		(attr smd)
+		(attr smd exclude_from_pos_files exclude_from_bom)
 		(fp_line
 			(start 1.35 0.9)
 			(end 1.35 1.425)
@@ -15650,7 +15686,7 @@
 		(path "/f201ab1f-ab7f-4f42-81c5-38f8cc145b29")
 		(sheetname "Root")
 		(sheetfile "scd30_esp.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files exclude_from_bom)
 		(fp_circle
 			(center 0 0)
 			(end 1 0)
@@ -15755,6 +15791,18 @@
 					(thickness 0.15)
 				)
 				(justify mirror)
+			)
+		)
+		(property "LCSC" "C512395"
+			(at 0 0 0)
+			(layer "B.SilkS")
+			(hide yes)
+			(uuid "a990fdf9-5be8-40a2-94d6-d98e05ef1f43")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
 			)
 		)
 		(path "/646325a7-660f-476f-91eb-604ce29ef702")

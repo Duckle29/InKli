@@ -8688,6 +8688,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C701342"
+			(at 73.3141 105.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "39"
 			(uuid "79926916-57d7-4bda-8f62-87b849b7f650")
 		)
@@ -9144,6 +9153,15 @@
 		)
 		(property "Description" "Single Pole Single Throw (SPST) switch"
 			(at 147.32 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C512395"
+			(at 147.32 146.304 0)
 			(effects
 				(font
 					(size 1.27 1.27)

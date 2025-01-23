@@ -3520,6 +3520,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C223228"
+			(at 93.98 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "51be2e45-2e48-4613-aa96-b5ae9f7dbde9")
 		)
@@ -4521,6 +4530,15 @@
 		)
 		(property "Description" "30V Vds, 1.4A Id, N-Channel MOSFET, SC-70"
 			(at 101.6 78.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C469327"
+			(at 106.934 77.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
