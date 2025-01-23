@@ -3206,6 +3206,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C556393"
+			(at 120.65 65.7226 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "2700d7d0-c269-4f86-9d85-18a876cb918d")
 		)
@@ -3817,6 +3826,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C556393"
+			(at 114.3 84.582 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4e839365-0a84-43f6-b38e-ebb85e684859")
 		)
@@ -4282,6 +4300,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C5343283"
+			(at 201.93 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "f5ff8cde-856d-46d5-892f-51bca941b71e")
 		)
@@ -4413,6 +4440,15 @@
 		)
 		(property "Description" "40V 0.25A Schottky Diode, SOD-323"
 			(at 83.82 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C556393"
+			(at 86.36 63.8174 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4558,6 +4594,15 @@
 		)
 		(property "Description" "40V 0.25A Schottky Diode, SOD-323"
 			(at 123.19 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C556393"
+			(at 127.254 84.836 0)
 			(effects
 				(font
 					(size 1.27 1.27)
