@@ -1,0 +1,339 @@
+substitutions:
+  name: "Airee"
+  friendly_name: "Airee"
+
+# Enable logging
+logger:
+  level: DEBUG
+
+esp32_touch:
+  setup_mode: False
+
+binary_sensor:
+  - platform: gpio
+    id: btn
+    pin:
+      number: GPIO32
+      inverted: True
+      mode:
+        input: True
+        pullup: True
+    filters:
+      - delayed_off: 
+          milliseconds: 500
+    on_press: 
+      then:
+        - display.page.show_next: disp
+    
+
+  - platform: esp32_touch
+    pin: GPIO33
+    threshold: 1040
+    id: touch_test
+    filters:
+      - delayed_off: 
+          milliseconds: 500
+    on_press: 
+      then:
+        - display.page.show_next: disp
+
+sensor:
+  - platform: scd30
+    i2c_id: i2c_scd30
+    address: 0x61
+    update_interval: 30s
+    temperature_offset: 2
+    co2:
+      id: scd30_dev_co2
+      name: scd30 dev co2
+      accuracy_decimals: 0
+      internal: False
+    temperature:
+      id: scd30_dev_t
+      name: scd30 dev temp
+      accuracy_decimals: 2
+      internal: False
+    humidity:
+      name: scd30 dev rh
+      id: scd30_dev_rh
+      accuracy_decimals: 2
+      internal: False
+  
+  - platform: wifi_signal
+    id: wifi_sig
+    update_interval: 60s
+    filters:
+      - lambda: return min(max(2 * (x+100.0), 0.0), 100.0);    
+  
+text_sensor:
+  - platform: wifi_info
+    ip_address: 
+      id: wifi_ip_addr
+    ssid: 
+      id: wifi_ssid
+    mac_address: 
+      id: wifi_mac
+
+external_components:
+  - source: github://pr#8112
+    components:
+      - graph
+
+graph:
+  - id: co2_graph
+    height: 61
+    width: 220
+    duration: 
+      days: 0
+      hours: 12
+    border: True
+    y_grid: 250
+    min_range: 1000
+    min_value: 0
+    traces:
+      - sensor: scd30_dev_co2
+        line_type: SOLID
+        line_thickness: 2
+        continuous: True
+
+# Example on how to implement a UI section in HA for manual calibration.
+# Note: Please enter first a CO2 value before pressing the button.
+button:
+  - platform: template
+    name: "SCD30 Force manual calibration"
+    entity_category: "config"
+    on_press:
+      then:
+        - scd30.force_recalibration_with_reference:
+            value: !lambda 'return id(co2_cal).state;'
+
+number:
+  - platform: template
+    name: "CO2 calibration value"
+    optimistic: true
+    min_value: 350
+    max_value: 4500
+    step: 1
+    id: co2_cal
+    icon: "mdi:molecule-co2"
+    entity_category: "config"
+
+font:
+  # gfonts://family[@weight]
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 700
+    id: literata_b
+    size: 25
+    extras:
+      - file: "gfonts://Material+Symbols+Outlined"
+        glyphs: [
+          "\ue1ff", # Thermometer
+          "\uf87e", # Humidity %
+          "\ue7b0", # CO2
+        ]
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 700
+    id: literata_med_b
+    size: 20
+
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 400
+    id: literata_smol
+    size: 15
+  
+  - file:
+      type: gfonts
+      family: Literata
+      weight: 600
+    id: literata_less_smol
+    size: 14
+  
+  - file:
+      type: gfonts
+      family: IBM Plex Mono 
+      weight: 600
+    id: mono_reg
+    size: 20
+  
+  - file:
+      type: gfonts
+      family: IBM Plex Mono 
+      weight: 600
+    id: mono_med
+    size: 16
+
+display:
+  - platform: waveshare_epaper
+    id: disp
+    cs_pin: GPIO5
+    dc_pin: GPIO17
+    reset_pin: GPIO16
+    busy_pin: GPIO4
+    model: 2.13inv3
+    full_update_every: 60
+    rotation: 270
+    update_interval: 60s
+    pages:
+      - id: home_screen
+        lambda: |-
+          int disp_height = 122; // This display has it's height (well width) set to 128 which is wrong, so get_height (on rotated displays) returns wrong number
+          if(id(scd30_dev_co2).has_state())
+          {
+            it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_dev_t).state);
+            it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_dev_rh).state);
+            it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_dev_co2).state);
+            
+            int y_grid = 250;
+            int graph_width = 220;
+            int graph_height = 61; // display-height/2
+            int graph_start_x = it.get_width() - graph_width; // Right adjust graph
+            int graph_start_y = disp_height - graph_height; // Bottom adjust graph
+
+            // Generate y-axis labels
+            float graph_lim = id(co2_graph).get_graph_limit_max();
+            if (!std::isnan(graph_lim))
+            {
+              it.printf(it.get_width()-220, graph_start_y, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
+              it.printf(it.get_width()-220, graph_start_y + graph_height/2, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
+            }
+            // Graph
+            it.graph(it.get_width()-220, 61, id(co2_graph));
+            if (!id(init_done))
+            {
+              id(init_done) = true;
+              id(disp).set_full_update_every(60);
+            }
+
+          } else {
+            it.print(it.get_width()/2, disp_height/2, id(literata_b), TextAlign::CENTER, "Starting");
+            id(disp).set_full_update_every(1);
+          }
+      - id: ap_info
+        lambda: |-
+          int line_height = 15;
+          it.print(0, 0, id(mono_reg), "Config mode.");
+          it.print(0, line_height*1, id(mono_reg), "Connect to:");
+          it.print(0, line_height*2, id(mono_reg), "SSID: AirSens Config");
+          it.printf(0, line_height*3, id(mono_reg), "Pass  %s", id(ap_password));
+
+      - id: wifi_information
+        lambda: |-
+          int line_height = 15;
+          it.printf(0, 0, id(mono_med), "IP: %s", id(wifi_ip_addr).state.c_str());
+          it.printf(0, line_height*1, id(mono_med), "MAC: %s", id(wifi_mac).state.c_str());
+          it.printf(0, line_height*2, id(mono_med), "SSID: %s", id(wifi_ssid).state.c_str());
+          it.printf(0, line_height*3, id(mono_med), "Signal strength: %.0f%%", id(wifi_sig).state);
+          it.printf(0, line_height*3, id(mono_med), "Signal strength: %.0f%%", id(wifi_sig).state);
+          it.printf(0, line_height*4, id(mono_med), "%", id(ap_password));
+      - id: updating
+        lambda: |-
+          it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Updating");
+    on_page_change: 
+      then:
+        - lambda: "id(disp).set_full_update_every(1);"  # Will apply on AFTER next update
+        - component.update: disp # Likely a partial update
+        - lambda: "id(disp).set_full_update_every(60);" # Will apply on AFTER next update
+        - component.update: disp # A full update
+
+esp32:
+  board: widora-air
+  flash_size: 16MB
+  framework:
+    type: arduino
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
+
+  min_version: 2025.02.0
+
+  project:
+    name: "duckle29.airee"
+    version: "0.0.0"
+
+  on_boot:
+    - priority: 900
+      then:
+        - lambda: |-
+            for (int i=0; i<8; i++)
+            {
+              uint32_t rand_val = esp_random();
+
+              uint8_t min_num, max_num;
+              switch (rand_val % 3)
+              {
+                case 0:
+                  min_num = '0';
+                  max_num = '9';
+                  break;
+                case 1:
+                  min_num = 'A';
+                  max_num = 'Z';
+                  break;
+                case 2:
+                default:
+                  min_num = 'a';
+                  max_num = 'z';
+                  break;
+              }
+
+              uint8_t num = (rand_val % ((max_num-min_num) +1)) + min_num;
+              if (num == 'l') { num = '2'; } // l and 1 are hard to tell apart. Only 2 instead
+              id(ap_password)[i] = num;
+            }
+    - priority: -100
+      then: 
+        - lambda: |-
+            ESP_LOGD("AP_RAND_PASS", "%s", id(ap_password));
+
+globals:
+  - id: init_done
+    type: bool
+    initial_value: '0'
+
+  - id: ap_password
+    type: char[9]
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+
+i2c:
+  - id: i2c_scd30
+    sda: GPIO21
+    scl: GPIO22
+    scan: False
+  
+  - id: qwiic
+    sda: GPIO26
+    scl: GPIO27
+    scan: True
+
+ota:
+  - platform: esphome
+    on_begin:
+      then:
+        - display.page.show: updating
+        - delay: 1s
+
+captive_portal:
+
+esp32_improv:
+  authorizer: btn
+
+improv_serial:
+
+# Enable Home Assistant API
+api:
+
+wifi:
+  ap:
+    ssid: "AirSens Config"
+    password: "12345678"

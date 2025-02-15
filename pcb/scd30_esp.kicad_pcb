@@ -11598,7 +11598,7 @@
 		(descr "SOT, 6 Pin (https://www.jedec.org/sites/default/files/docs/Mo-178c.PDF variant AB), generated with kicad-footprint-generator ipc_gullwing_generator.py")
 		(tags "SOT TO_SOT_SMD")
 		(property "Reference" "U1"
-			(at 0 -2.4 0)
+			(at 0 -2.4 360)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "f70de554-e431-4472-beea-ddc13496c470")
@@ -11610,7 +11610,7 @@
 			)
 		)
 		(property "Value" "TPS62A01PDDCR"
-			(at 0 2.4 0)
+			(at 0 2.4 360)
 			(layer "F.Fab")
 			(uuid "0ec204a0-fdd5-4b6c-aa13-051044eb93b5")
 			(effects
@@ -11621,7 +11621,7 @@
 			)
 		)
 		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
-			(at 0 0 0)
+			(at 0 0 360)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "3691abb9-c4d7-487b-9812-3a3ba09e9f7e")
@@ -11633,7 +11633,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/tps62a02.pdf"
-			(at 0 0 0)
+			(at 0 0 360)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "759a8425-e405-47ad-926a-093eb2f86e75")
@@ -11645,7 +11645,7 @@
 			)
 		)
 		(property "Description" "High Efficiency Synchronous Buck Converter, Adjustable Output 0.6V-5.5V, 2A, SOT-23-6"
-			(at 0 0 0)
+			(at 0 0 360)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "bc3965e0-94d4-4cb4-bec3-fc58b7a20e66")
@@ -11805,7 +11805,7 @@
 			(uuid "6fcc3496-6299-4cd2-b8e0-65589fe42a51")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 0)
+			(at 0 0 360)
 			(layer "F.Fab")
 			(uuid "ddb7d70d-c595-469e-8b46-722c0c59b33a")
 			(effects
