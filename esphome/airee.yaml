@@ -9,6 +9,10 @@ logger:
 esp32_touch:
   setup_mode: False
 
+button:
+  - platform: factory_reset
+    name: Restart with Factory Default Settings
+
 binary_sensor:
   - platform: gpio
     id: btn
@@ -260,7 +264,7 @@ esphome:
 
   project:
     name: "duckle29.airee"
-    version: "0.0.0"
+    version: "0.0.1"
 
   on_boot:
     - priority: 900
