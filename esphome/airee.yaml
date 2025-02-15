@@ -264,7 +264,7 @@ esphome:
 
   project:
     name: "duckle29.airee"
-    version: "0.0.1"
+    version: "0.0.0"
 
   on_boot:
     - priority: 900
