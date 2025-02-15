@@ -7,3 +7,6 @@ scd30_esp.step
 *_autosave*
 *auto_saved*
 *-backups
+.venv/*
+esphome/.esphome/**
+esphome/.gitignore
