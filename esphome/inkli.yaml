@@ -18,25 +18,24 @@ binary_sensor:
       mode:
         input: True
         pullup: True
-    filters:
-      - delayed_off: 
-          milliseconds: 500
-    on_press: 
-      then:
-        - display.page.show_next: disp
-    on_double_click:
-      min_length: 50ms
-      max_length: 350ms
-      then:
-        - if:
-            condition:
-              or:
-                - display.is_displaying_page: ap_info
-                - display.is_displaying_page: page_setup
-            then:
-              - display.page.show: page_co2_graph
-            else:
-              - display.page.show: ap_info
+    on_click:
+      - min_length: 50ms
+        max_length: 350ms
+        then:
+          - display.page.show_next: disp
+
+      - min_length: 1000ms
+        max_length: 5000ms
+        then:
+          - if:
+              condition:
+                or:
+                  - display.is_displaying_page: ap_info
+                  - display.is_displaying_page: page_setup
+              then:
+                - display.page.show: page_co2_graph
+              else:
+                - display.page.show: ap_info
 
   - platform: esp32_touch
     pin: GPIO33
@@ -71,6 +70,16 @@ sensor:
       name: "${friendly_name} co2"
       accuracy_decimals: 0
       internal: False
+      on_value_range:
+        - above: 2000
+          then:
+            - output.set_level:
+                id: led_status
+                level: 50%
+        - below: 2000
+          then:
+            - output.turn_off: led_status
+
     temperature:
       id: scd30_t
       name: "${friendly_name} temp"
@@ -84,7 +93,7 @@ sensor:
   
   - platform: wifi_signal
     id: wifi_sig
-    update_interval: 60s
+    update_interval: 30s
     filters:
       - lambda: return min(max(2 * (x+100.0), 0.0), 100.0);
   
@@ -242,8 +251,11 @@ font:
     id: mono_smol
     size: 13
 
-status_led:
-  pin: GPIO2
+output:
+  - platform: ledc
+    id: led_status
+    pin: GPIO2
+    frequency: 50000
 
 display:
   - platform: waveshare_epaper
@@ -255,7 +267,7 @@ display:
     model: 2.13inv3
     full_update_every: 60
     rotation: 270
-    update_interval: 60s
+    update_interval: 30s
     pages:
       - id: page_setup
         lambda: |-
@@ -342,7 +354,8 @@ display:
           int disp_height = 122;
 
           it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
-          it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\ue7b0%.0f", id(scd30_co2).state);
+          it.printf(it.get_width() -2, 0, id(literata_med_b), TextAlign::RIGHT, "ppm");
+          it.printf(it.get_width() -50, 0, id(literata_b), TextAlign::RIGHT, "\ue7b0%.0f", id(scd30_co2).state);
           it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uf87e%.1f%%", id(scd30_rh).state);
           
           int y_grid = 250;
