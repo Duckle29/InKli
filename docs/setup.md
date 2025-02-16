@@ -22,7 +22,9 @@ If using Improv Serial, make sure to connect the device to your computer with a 
 ## 3: Through the device backup access point
 This method is done easiest through a phone, but can be done on anything with wifi.
 
-Go to your wifi settings, and connect to the InKli hotspot. It'll have a 6 character address after it's name too.
+Go to your wifi settings, and connect to the InKli Config hotspot. It'll have a 6 character address after it's name too.
+To get the password for the network, push the front button to go to the AP info screen.
+
 Once connected, you should be prompted to "log in" to the network. If you're not prompted, got to your browser and navigate to http://192.168.4.1
 
 On this page, you can then select your wifi, and sign in to it.

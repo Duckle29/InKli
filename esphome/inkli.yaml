@@ -24,7 +24,19 @@ binary_sensor:
     on_press: 
       then:
         - display.page.show_next: disp
-    
+    on_double_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - if:
+            condition:
+              or:
+                - display.is_displaying_page: ap_info
+                - display.is_displaying_page: page_setup
+            then:
+              - display.page.show: page_co2_graph
+            else:
+              - display.page.show: ap_info
 
   - platform: esp32_touch
     pin: GPIO33
@@ -43,8 +55,11 @@ sensor:
     on_value_range:
       - above: 60.0
         then:
-          - display.page.show: page_co2_graph
-          - logger.log: "above 60s"
+          - if:
+              condition:
+                - display.is_displaying_page: page_setup
+              then:
+                - display.page.show: page_co2_graph
 
   - platform: scd30
     i2c_id: i2c_scd30
@@ -249,7 +264,7 @@ display:
           std::vector<std::string> lines = {
             "For full functionality",
             "go to:",
-            "improv-wifi.com/",
+            "sche.cc/inklisetup",
             "and connect me to wifi"
           };
 
@@ -353,7 +368,7 @@ display:
           int line_height = 15;
           it.print(0, 0, id(mono_reg), "Config mode.");
           it.print(0, line_height*1, id(mono_reg), "Connect to:");
-          it.print(0, line_height*2, id(mono_reg), "SSID: AirSens Config");
+          it.print(0, line_height*2, id(mono_reg), "SSID: InKli Config");
           it.printf(0, line_height*3, id(mono_reg), "Pass  %s", id(ap_password));
 
       - id: page_wifi_info 
@@ -393,7 +408,7 @@ esphome:
   #min_version: 2025.02.0
 
   project:
-    name: "duckle29.airee"
+    name: "duckle29.inkli"
     version: "0.0.0"
 
   on_boot:
@@ -453,13 +468,13 @@ esphome:
 
             id(page_updating).set_next(id(page_updating));
 
-    - priority: -100
+    - priority: 300
       then: 
         - lambda: |-
             ESP_LOGD("AP_RAND_PASS", "%s", id(ap_password));
             auto ap = id(wifi_id).get_ap();
             std::string pass(id(ap_password), sizeof(id(ap_password)));
-            ap.set_ssid("AirSens Config");
+            ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
 
@@ -504,5 +519,3 @@ wifi:
   on_connect:
     - display.page.show: page_co2_graph
   ap:
-    ssid: "AirSens Config"
-    password: "12345678"
