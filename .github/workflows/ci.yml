@@ -22,7 +22,7 @@ jobs:
       matrix:
         #### Modify below here to match your project ####
         file:
-          - esphome/inkli.yaml
+          - esphome/inkli
         #### Modify above here to match your project ####
 
         esphome-version:
