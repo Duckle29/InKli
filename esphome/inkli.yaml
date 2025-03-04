@@ -15,6 +15,7 @@ binary_sensor:
     pin:
       number: GPIO32
       inverted: True
+      #allow_other_uses: True
       mode:
         input: True
         pullup: True
@@ -36,6 +37,21 @@ binary_sensor:
                 - display.page.show: page_co2_graph
               else:
                 - display.page.show: ap_info
+          - if:
+              condition:
+                and:
+                  - not:
+                    - wifi.enabled:
+                  - display.is_displaying_page: ap_info
+              then:
+                - wifi.enable:
+                - delay: 5min
+                - if:
+                    condition:
+                      wifi.connected:
+                    else:
+                      wifi.disable:
+
 
       - min_length: 5s
         max_length: 60s
@@ -79,7 +95,7 @@ sensor:
     i2c_id: i2c_scd30
     address: 0x61
     update_interval: 30s
-    temperature_offset: 2
+    temperature_offset: 3
     co2:
       id: scd30_co2
       name: "co2"
@@ -109,7 +125,7 @@ sensor:
   
   - platform: wifi_signal
     id: wifi_sig
-    update_interval: 30s
+    update_interval: 60s
     filters:
       - lambda: return min(max(2 * (x+100.0), 0.0), 100.0);
   
@@ -236,6 +252,12 @@ font:
           "\ue1ff", # Thermometer
           "\uf87e", # Humidity %
           "\ue7b0", # CO2
+          "\uf0ef", # Wifi ?
+          "\ue1d8", # WiFi Connected 4/4
+          "\uebe1", # WiFi Connected 3/4
+          "\uebd6", # WiFi Connected 2/4
+          "\uebe4", # WiFi Connected 1/4
+          "\ue1da", # WiFi Off
         ]
 
   - file:
@@ -305,6 +327,42 @@ display:
           }
       - id: page_co2_graph 
         lambda: |-
+          if( id(wifi_id).is_disabled() )
+          {
+            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1da");
+            ESP_LOGI("blep", "Wifi off");
+          }
+          else if( id(wifi_id).is_connected() )
+          {
+            if( id(wifi_sig).state > 75.0 )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1d8"); // WiFi 4/4
+              ESP_LOGI("blep", "Wifi 4/4");
+            }
+            else if( id(wifi_sig).state > 50.0  )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe1"); // WiFi 3/4
+              ESP_LOGI("blep", "Wifi 3/4");
+            }
+            else if( id(wifi_sig).state > 25.0  )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebd6"); // WiFi 2/4
+              ESP_LOGI("blep", "Wifi 2/4");
+            }
+            else // Connected but below 25% strength
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe4"); // WiFi 1/4
+              ESP_LOGI("blep", "Wifi 1/4");
+            }
+          }
+          else
+          {
+            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uf0ef");
+            ESP_LOGI("blep", "Wifi ?");
+          }
+
+
+
           it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
           it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
           it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_co2).state);
@@ -505,6 +563,14 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
+    - priority: -300
+      then:
+        - delay: 5min
+        - if:
+            condition:
+              wifi.connected:
+            else:
+              wifi.disable:
 
 globals:
   - id: ap_password
