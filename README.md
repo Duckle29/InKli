@@ -6,7 +6,7 @@ It displays this on an E-paper display, to allow you to keep an eye on the air i
 Additionally, as it is made with ESPHome, it can also easily connect to a Homeassistant instance, for further home automation and logging.
 
 ![Image](https://github.com/user-attachments/assets/8a406870-4cd5-410b-8cb9-5f982c64b4e7)
-![Image](https://github.com/user-attachments/assets/cc3abb63-6542-44ca-b9e7-2ea1442fb772)
+![Image](https://github.com/user-attachments/assets/2fabcd8c-5f1c-4234-9853-e2954723ad6b)
 
 
 ## History
