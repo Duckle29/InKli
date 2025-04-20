@@ -418,7 +418,7 @@ esphome:
 
   project:
     name: "duckle29.inkli"
-    version: "0.0.1"
+    version: "0.0.2"
 
   on_boot:
     - priority: 900
