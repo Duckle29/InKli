@@ -27,3 +27,29 @@ jobs:
       - build-firmware
     with:
       version: ${{ github.event.release.tag_name }}
+
+  upload-to-otaserv:
+    name: Upload binary and md5 to ota server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add SSH key
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          mkdir -p /home/runner/.ssh
+          ssh-keyscan otaserv.mikkel.cc >> /home/runner/.ssh/known_hosts
+          echo "${{ secrets.SFTP_KEY }} > /home/runner/.ssh/github_actions"
+          chmod 600 /home/runner/.ssh/github_actions
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null	
+          ssh-add /home/runner/.ssh/github_actions
+
+      - name: Download ota bin and md5
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          mkdir files
+          cd files
+          curl -O https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin
+          curl -O https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin.md5
+          scp ./* otaserv@otaserv.mikkel.cc:~/
