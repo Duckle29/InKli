@@ -417,7 +417,7 @@ esp32:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.0.2
+  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.0.3
   import_full_config: false
 
 esphome:
@@ -429,7 +429,7 @@ esphome:
 
   project:
     name: "duckle29.inkli"
-    version: "0.0.2"
+    version: "0.0.3"
 
   on_boot:
     - priority: 900
