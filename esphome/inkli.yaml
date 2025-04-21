@@ -24,8 +24,8 @@ binary_sensor:
         then:
           - display.page.show_next: disp
 
-      - min_length: 1000ms
-        max_length: 5000ms
+      - min_length: 1s
+        max_length: 5s
         then:
           - if:
               condition:
@@ -36,6 +36,16 @@ binary_sensor:
                 - display.page.show: page_co2_graph
               else:
                 - display.page.show: ap_info
+
+      - min_length: 5s
+        max_length: 60s
+        then:
+          - display.page.show: page_updating
+          - component.update: disp
+          - delay: 1s
+          - ota.http_request.flash:
+              md5_url: https://paste.mikkel.cc/GzvK7Dyr/+inline
+              url: https://paste.mikkel.cc/CnemcyFY/+inline
 
   - platform: esp32_touch
     pin: GPIO33
@@ -76,6 +86,7 @@ sensor:
             - output.set_level:
                 id: led_status
                 level: 50%
+            - output.turn_on: led_status
         - below: 2000
           then:
             - output.turn_off: led_status
@@ -106,11 +117,11 @@ text_sensor:
     mac_address: 
       id: wifi_mac
 
-external_components:
-  - source: github://pr#8112
-    components:
-      - graph
-    #refresh: 1s
+# external_components:
+#   - source: github://pr#8112
+#     components:
+#       - graph
+#     #refresh: 1s
 
 # Example on how to implement a UI section in HA for manual calibration.
 # Note: Please enter first a CO2 value before pressing the button.
@@ -142,7 +153,7 @@ output:
   - platform: ledc
     id: led_status
     pin: GPIO2
-    frequency: 50000
+    frequency: 19531
 
 graph:
   - id: co2_graph
@@ -400,13 +411,13 @@ display:
 ## Board and project config
 
 esp32:
-  board: widora-air
+  board: m5stack-core-esp32-16M
   flash_size: 16MB
   framework:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.0.1
+  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.0.3
   import_full_config: false
 
 esphome:
@@ -414,11 +425,11 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
 
-  min_version: 2025.02.0
+  min_version: 2025.4.0
 
   project:
     name: "duckle29.inkli"
-    version: "0.0.2"
+    version: "0.0.3"
 
   on_boot:
     - priority: 900
@@ -506,12 +517,21 @@ i2c:
     scl: GPIO27
     scan: True
 
+http_request:
+  verify_ssl: True
+  # TLS assumes 16 KiB buffers by default. Some servers support MFLN to negotiate smaller buffers, but lets not rely on it
+  buffer_size_rx: 4096
+  
+debug:
+  update_interval: 5s
+
 ota:
+  - platform: http_request
   - platform: esphome
-    on_begin:
-      then:
-        - display.page.show: page_updating
-        - delay: 1s
+    # on_begin:
+    #   then:
+    #     - display.page.show: page_updating
+    #     - delay: 1s
 
 captive_portal:
 
