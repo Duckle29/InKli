@@ -4,10 +4,10 @@ substitutions:
 
 # Enable logging
 logger:
-  level: DEBUG
+  level: INFO
 
-esp32_touch:
-  setup_mode: False
+# esp32_touch:
+#   setup_mode: False
 
 binary_sensor:
   - platform: gpio
@@ -46,17 +46,22 @@ binary_sensor:
           - ota.http_request.flash:
               md5_url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin.md5
               url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin
+          - display.page.show: page_update_failed
+          - component.update: disp
+          - delay: 10s
+          - display.page.show: page_co2_graph
+          - component.update: disp
 
-  - platform: esp32_touch
-    pin: GPIO33
-    threshold: 1040
-    id: touch_test
-    filters:
-      - delayed_off: 
-          milliseconds: 500
-    on_press: 
-      then:
-        - display.page.show_next: disp
+  # - platform: esp32_touch
+  #   pin: GPIO33
+  #   threshold: 1040
+  #   id: touch_test
+  #   filters:
+  #     - delayed_off: 
+  #         milliseconds: 500
+  #   on_press: 
+  #     then:
+  #       - display.page.show_next: disp
 
 sensor:
   - platform: uptime
@@ -401,6 +406,9 @@ display:
       - id: page_updating 
         lambda: |-
           it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Updating");
+      - id: page_update_failed
+        lambda: |-
+          it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Update Failed");
     on_page_change: 
       then:
         - lambda: "id(disp).set_full_update_every(1);"  # Will apply on AFTER next update
@@ -522,8 +530,8 @@ http_request:
   # TLS assumes 16 KiB buffers by default. Some servers support MFLN to negotiate smaller buffers, but lets not rely on it
   buffer_size_rx: 4096
   
-debug:
-  update_interval: 5s
+# debug:
+#   update_interval: 5s
 
 ota:
   - platform: http_request
