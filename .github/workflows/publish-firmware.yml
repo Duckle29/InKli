@@ -52,6 +52,6 @@ jobs:
         run: |
           mkdir files
           cd files
-          curl -O https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin
-          curl -O https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin.md5
+          curl -LO https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin
+          curl -LO https://github.com/Duckle29/InKli/releases/latest/download/inkli-esp32.ota.bin.md5
           scp ./* otaserv@otaserv.mikkel.cc:/inkli/
