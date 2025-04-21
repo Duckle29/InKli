@@ -31,6 +31,8 @@ jobs:
   upload-to-otaserv:
     name: Upload binary and md5 to ota server
     runs-on: ubuntu-latest
+    needs:
+      - upload-to-release
 
     steps:
       - name: Add SSH key
@@ -39,9 +41,9 @@ jobs:
         run: |
           mkdir -p /home/runner/.ssh
           ssh-keyscan otaserv.mikkel.cc >> /home/runner/.ssh/known_hosts
-          echo "${{ secrets.SFTP_KEY }} > /home/runner/.ssh/github_actions"
+          echo "${{ secrets.SFTP_KEY }}" > /home/runner/.ssh/github_actions
           chmod 600 /home/runner/.ssh/github_actions
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null	
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/github_actions
 
       - name: Download ota bin and md5
