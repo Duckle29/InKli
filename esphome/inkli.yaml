@@ -1,6 +1,7 @@
 substitutions:
   name: "inkli"
   friendly_name: "InKli"
+  version: "v0.1.1"
 
 # Enable logging
 logger:
@@ -24,6 +25,7 @@ binary_sensor:
         max_length: 350ms
         then:
           - display.page.show_next: disp
+          - component.update: disp
 
       - min_length: 1s
         max_length: 5s
@@ -315,7 +317,8 @@ display:
             "For full functionality",
             "go to:",
             "sche.cc/inklisetup",
-            "and connect me to wifi"
+            "and connect me to wifi",
+            "${version}"
           };
 
           it.print(0, 0, id(mono_reg), "HI! I'm InKli :D");
@@ -483,7 +486,7 @@ esp32:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.1.0
+  package_import_url: "github://Duckle29/SCD30_ESP/esphome/inkli.yaml@${version}"
   import_full_config: false
 
 esphome:
@@ -495,7 +498,7 @@ esphome:
 
   project:
     name: "duckle29.inkli"
-    version: "0.1.0"
+    version: "${version}"
 
   on_boot:
     - priority: 900
