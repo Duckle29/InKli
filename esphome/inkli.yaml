@@ -1,13 +1,14 @@
 substitutions:
   name: "inkli"
   friendly_name: "InKli"
+  version: "v0.1.1"
 
 # Enable logging
 logger:
-  level: DEBUG
+  level: INFO
 
-esp32_touch:
-  setup_mode: False
+# esp32_touch:
+#   setup_mode: False
 
 binary_sensor:
   - platform: gpio
@@ -15,6 +16,7 @@ binary_sensor:
     pin:
       number: GPIO32
       inverted: True
+      #allow_other_uses: True
       mode:
         input: True
         pullup: True
@@ -23,6 +25,7 @@ binary_sensor:
         max_length: 350ms
         then:
           - display.page.show_next: disp
+          - component.update: disp
 
       - min_length: 1s
         max_length: 5s
@@ -36,6 +39,21 @@ binary_sensor:
                 - display.page.show: page_co2_graph
               else:
                 - display.page.show: ap_info
+          - if:
+              condition:
+                and:
+                  - not:
+                    - wifi.enabled:
+                  - display.is_displaying_page: ap_info
+              then:
+                - wifi.enable:
+                # TODO: non-blocking delay - delay: 5min
+                - if:
+                    condition:
+                      wifi.connected:
+                    else:
+                      wifi.disable:
+
 
       - min_length: 5s
         max_length: 60s
@@ -46,17 +64,22 @@ binary_sensor:
           - ota.http_request.flash:
               md5_url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin.md5
               url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin
+          - display.page.show: page_update_failed
+          - component.update: disp
+          - delay: 10s
+          - display.page.show: page_co2_graph
+          - component.update: disp
 
-  - platform: esp32_touch
-    pin: GPIO33
-    threshold: 1040
-    id: touch_test
-    filters:
-      - delayed_off: 
-          milliseconds: 500
-    on_press: 
-      then:
-        - display.page.show_next: disp
+  # - platform: esp32_touch
+  #   pin: GPIO33
+  #   threshold: 1040
+  #   id: touch_test
+  #   filters:
+  #     - delayed_off: 
+  #         milliseconds: 500
+  #   on_press: 
+  #     then:
+  #       - display.page.show_next: disp
 
 sensor:
   - platform: uptime
@@ -74,7 +97,7 @@ sensor:
     i2c_id: i2c_scd30
     address: 0x61
     update_interval: 30s
-    temperature_offset: 2
+    temperature_offset: 3
     co2:
       id: scd30_co2
       name: "co2"
@@ -104,7 +127,7 @@ sensor:
   
   - platform: wifi_signal
     id: wifi_sig
-    update_interval: 30s
+    update_interval: 60s
     filters:
       - lambda: return min(max(2 * (x+100.0), 0.0), 100.0);
   
@@ -231,6 +254,12 @@ font:
           "\ue1ff", # Thermometer
           "\uf87e", # Humidity %
           "\ue7b0", # CO2
+          "\uf0ef", # Wifi ?
+          "\ue1d8", # WiFi Connected 4/4
+          "\uebe1", # WiFi Connected 3/4
+          "\uebd6", # WiFi Connected 2/4
+          "\uebe4", # WiFi Connected 1/4
+          "\ue1da", # WiFi Off
         ]
 
   - file:
@@ -288,7 +317,8 @@ display:
             "For full functionality",
             "go to:",
             "sche.cc/inklisetup",
-            "and connect me to wifi"
+            "and connect me to wifi",
+            "${version}"
           };
 
           it.print(0, 0, id(mono_reg), "HI! I'm InKli :D");
@@ -300,6 +330,42 @@ display:
           }
       - id: page_co2_graph 
         lambda: |-
+          if( id(wifi_id).is_disabled() )
+          {
+            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1da");
+            ESP_LOGI("blep", "Wifi off");
+          }
+          else if( id(wifi_id).is_connected() )
+          {
+            if( id(wifi_sig).state > 75.0 )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1d8"); // WiFi 4/4
+              ESP_LOGI("blep", "Wifi 4/4");
+            }
+            else if( id(wifi_sig).state > 50.0  )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe1"); // WiFi 3/4
+              ESP_LOGI("blep", "Wifi 3/4");
+            }
+            else if( id(wifi_sig).state > 25.0  )
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebd6"); // WiFi 2/4
+              ESP_LOGI("blep", "Wifi 2/4");
+            }
+            else // Connected but below 25% strength
+            {
+              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe4"); // WiFi 1/4
+              ESP_LOGI("blep", "Wifi 1/4");
+            }
+          }
+          else
+          {
+            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uf0ef");
+            ESP_LOGI("blep", "Wifi ?");
+          }
+
+
+
           it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
           it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
           it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_co2).state);
@@ -401,6 +467,9 @@ display:
       - id: page_updating 
         lambda: |-
           it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Updating");
+      - id: page_update_failed
+        lambda: |-
+          it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Update Failed");
     on_page_change: 
       then:
         - lambda: "id(disp).set_full_update_every(1);"  # Will apply on AFTER next update
@@ -417,7 +486,7 @@ esp32:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: github://Duckle29/SCD30_ESP/esphome/inkli.yaml@v0.1.0
+  package_import_url: "github://Duckle29/SCD30_ESP/esphome/inkli.yaml@${version}"
   import_full_config: false
 
 esphome:
@@ -429,7 +498,7 @@ esphome:
 
   project:
     name: "duckle29.inkli"
-    version: "0.1.0"
+    version: "${version}"
 
   on_boot:
     - priority: 900
@@ -497,6 +566,14 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
+    - priority: -300
+      then:
+        - delay: 5min
+        - if:
+            condition:
+              wifi.connected:
+            else:
+              wifi.disable:
 
 globals:
   - id: ap_password
@@ -522,8 +599,8 @@ http_request:
   # TLS assumes 16 KiB buffers by default. Some servers support MFLN to negotiate smaller buffers, but lets not rely on it
   buffer_size_rx: 4096
   
-debug:
-  update_interval: 5s
+# debug:
+#   update_interval: 5s
 
 ota:
   - platform: http_request
