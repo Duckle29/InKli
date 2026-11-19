@@ -13,16 +13,6 @@ logger:
 #   setup_mode: False
 
 binary_sensor:
-  # E-paper BUSY line (high = refreshing). Shared with the display driver.
-  - platform: gpio
-    id: epd_busy
-    internal: true
-    pin:
-      number: GPIO4
-      allow_other_uses: true
-      mode:
-        input: true
-
   - platform: gpio
     id: btn
     pin:
@@ -38,7 +28,7 @@ binary_sensor:
       - lambda: id(btn_press_ms) = millis();
       - script.stop: full_refresh_when_idle
       # Avoid a full-refresh flash in the middle of a hold
-      - lambda: id(disp).set_full_update_every(1000);
+      - lambda: id(disp).set_full_update_every(255);
     on_release:
       - lambda: |-
           id(btn_held_for_ms) = millis() - id(btn_press_ms);
@@ -58,7 +48,6 @@ binary_sensor:
         max_length: 350ms
         then:
           - display.page.show_next: disp
-          - component.update: disp
 
       - min_length: 2s
         max_length: 6s
@@ -92,16 +81,18 @@ binary_sensor:
         max_length: 60s
         then:
           - display.page.show: page_updating
-          - component.update: disp
-          - delay: 1s
+          - script.wait: refresh_display
+          - wait_until:
+              condition:
+                not:
+                  epaper_spi.is_updating: disp
+              timeout: 10s
           - ota.http_request.flash:
               md5_url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin.md5
               url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin
           - display.page.show: page_update_failed
-          - component.update: disp
           - delay: 10s
           - display.page.show: page_co2_graph
-          - component.update: disp
 
   # - platform: esp32_touch
   #   pin: GPIO33
@@ -218,50 +209,47 @@ interval:
                   uint32_t held = millis() - id(btn_press_ms);
                   return held >= 500 && held <= 6400;
               # The driver drops updates while the panel is busy, so don't bother rendering then
-              - binary_sensor.is_off: epd_busy
+              - not:
+                  epaper_spi.is_updating: disp
           then:
             - component.update: disp
 
 script:
-  # After a hold: wait for any in-flight refresh to finish, then redraw so the bar
-  # disappears and the (possibly new) page is actually shown.
+  # Update the display once any refresh in flight has finished. epaper_spi refuses an update
+  # requested while it is busy (it logs an error and drops it), so every redraw goes through here.
+  - id: refresh_display
+    mode: restart
+    then:
+      - wait_until:
+          condition:
+            not:
+              epaper_spi.is_updating: disp
+          timeout: 6s
+      - component.update: disp
+
+  # After a hold: erase the bar and show the (possibly new) page
   - id: redraw_after_release
     mode: restart
     then:
       - logger.log:
           format: "Button released after %ums, scheduling redraw"
           args: ['id(btn_held_for_ms)']
-      - delay: 250ms
-      - wait_until:
-          condition:
-            binary_sensor.is_off: epd_busy
-          timeout: 6s
-      - component.update: disp
+      - script.execute: refresh_display
 
   # A full (flashing) e-paper refresh clears ghosting, but it's distracting while the user
   # is still pressing buttons. So do it once the button has been left alone for 5s.
   # (The driver also still does one every full_update_every updates.)
-  # The driver doesn't expose its update counter, so the full refresh is forced the way
-  # it works internally: with full_update_every = 1 the next update resets the counter to
-  # 0, and the update after that is then a full one. The panel must be idle between steps
-  # or the driver silently drops the update.
   - id: full_refresh_when_idle
     mode: restart
     then:
       - delay: 5s
       - wait_until:
           condition:
-            binary_sensor.is_off: epd_busy
+            not:
+              epaper_spi.is_updating: disp
           timeout: 6s
-      - lambda: id(disp).set_full_update_every(1);
-      - component.update: disp  # Resets the counter; may itself be partial
-      - delay: 300ms
-      - wait_until:
-          condition:
-            binary_sensor.is_off: epd_busy
-          timeout: 6s
-      - lambda: id(disp).set_full_update_every(60);
-      - component.update: disp  # The full refresh
+      - epaper_spi.full_update_next: disp
+      - component.update: disp
 
 climate:
   - platform: panasonic_ir
@@ -334,6 +322,13 @@ remote_receiver:
   rmt_symbols: 256
   receive_symbols: 256
 
+# On epaper_spi COLOR_OFF is black ink, so the graph traces need an explicit black
+color:
+  - id: ink
+    red: 0%
+    green: 0%
+    blue: 0%
+
 graph:
   - id: co2_graph
     height: 61
@@ -348,6 +343,7 @@ graph:
     traces:
       - sensor: scd30_co2
         line_type: SOLID
+        color: ink
         line_thickness: 2
         continuous: True
 
@@ -364,6 +360,7 @@ graph:
     traces:
       - sensor: scd30_t
         line_type: SOLID
+        color: ink
         line_thickness: 2
         continuous: True
 
@@ -380,6 +377,7 @@ graph:
     traces:
       - sensor: scd30_rh
         line_type: SOLID
+        color: ink
         line_thickness: 2
         continuous: True
 
@@ -454,15 +452,14 @@ font:
     size: 13
 
 display:
-  - platform: waveshare_epaper
+  - platform: epaper_spi
     id: disp
+    model: waveshare-2.13in-v3
     cs_pin: GPIO5
     dc_pin: GPIO17
     reset_pin: GPIO16
-    busy_pin:
-      number: GPIO4
-      allow_other_uses: true
-    model: 2.13inv3
+    busy_pin: GPIO4
+    data_rate: 2MHz  # what the old driver ran at
     full_update_every: 60
     rotation: 270
     update_interval: 30s
@@ -479,55 +476,55 @@ display:
             "${version}"
           };
 
-          it.print(0, 0, id(mono_reg), "HI! I'm InKli :D");
+          it.print(0, 0, id(mono_reg), COLOR_OFF, "HI! I'm InKli :D");
           
           int line_num = 1;
           for (auto line : lines)
           {
-            it.print(0, offset+ line_height*line_num++, id(mono_med), line.c_str());
+            it.print(0, offset+ line_height*line_num++, id(mono_med), COLOR_OFF, line.c_str());
           }
           if (id(draw_hold)) id(draw_hold)(it);
       - id: page_co2_graph 
         lambda: |-
           if( id(wifi_id).is_disabled() )
           {
-            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1da");
+            it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\ue1da");
             ESP_LOGI("blep", "Wifi off");
           }
           else if( id(wifi_id).is_connected() )
           {
             if( id(wifi_sig).state > 75.0 )
             {
-              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1d8"); // WiFi 4/4
+              it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\ue1d8"); // WiFi 4/4
               ESP_LOGI("blep", "Wifi 4/4");
             }
             else if( id(wifi_sig).state > 50.0  )
             {
-              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe1"); // WiFi 3/4
+              it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\uebe1"); // WiFi 3/4
               ESP_LOGI("blep", "Wifi 3/4");
             }
             else if( id(wifi_sig).state > 25.0  )
             {
-              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebd6"); // WiFi 2/4
+              it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\uebd6"); // WiFi 2/4
               ESP_LOGI("blep", "Wifi 2/4");
             }
             else // Connected but below 25% strength
             {
-              it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uebe4"); // WiFi 1/4
+              it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\uebe4"); // WiFi 1/4
               ESP_LOGI("blep", "Wifi 1/4");
             }
           }
           else
           {
-            it.print(it.get_width()/2, 0, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uf0ef");
+            it.print(it.get_width()/2, 0, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\uf0ef");
             ESP_LOGI("blep", "Wifi ?");
           }
 
 
 
-          it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
-          it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
-          it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_co2).state);
+          it.printf(10, 0, id(literata_b), COLOR_OFF, "\ue1ff%.1f°C", id(scd30_t).state);
+          it.printf(it.get_width() -10, 0, id(literata_b), COLOR_OFF, TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
+          it.printf(it.get_width()/2, 30, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "%.0fppm", id(scd30_co2).state);
           
           const int y_grid = 250;
           const int graph_width = 205;
@@ -541,27 +538,36 @@ display:
           {
             graph_lim = 0;
           }
-          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
-          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
+          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
+          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
 
           // Graph
-          it.graph(graph_start_x, graph_start_y, id(co2_graph));
+          it.graph(graph_start_x, graph_start_y, id(co2_graph), COLOR_OFF);
           if (id(draw_hold)) id(draw_hold)(it);
         
 
       - id: page_t_graph
         lambda: |-
-          it.printf(10, 0, id(literata_b), "\ue7b0%.0f", id(scd30_co2).state);
-          if( id(scd30_co2).state < 1000 )
-          {
-            it.print(80, 0, id(literata_med_b), "ppm");
-          }
-          else
-          {
-            it.print(88, 0, id(literata_med_b), "ppm");
-          }
-          it.printf(it.get_width() -10, 0, id(literata_b), TextAlign::RIGHT, "\uf87e%.1f%%", id(scd30_rh).state);
-          it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\ue1ff%.1f°C", id(scd30_t).state);
+          // CO2 icon + value, with "ppm" placed straight after the measured value so it can't
+          // be overdrawn by a 4 or 5 digit reading. The block starts a little further left than
+          // the other pages, and "ppm" drops to the smaller font only if the larger one would run
+          // into the humidity reading on the right (the SCD30 tops out at 10000 ppm).
+          char co2_txt[24];
+          char rh_txt[24];
+          snprintf(co2_txt, sizeof(co2_txt), "\ue7b0%.0f", id(scd30_co2).state);
+          snprintf(rh_txt, sizeof(rh_txt), "\uf87e%.1f%%", id(scd30_rh).state);
+          int co2_w, rh_w, ppm_w, x_off, baseline, height;
+          id(literata_b).measure(co2_txt, &co2_w, &x_off, &baseline, &height);
+          id(literata_b).measure(rh_txt, &rh_w, &x_off, &baseline, &height);
+          id(literata_med_b).measure("ppm", &ppm_w, &x_off, &baseline, &height);
+          const int co2_x = 2;
+          const int ppm_x = co2_x + co2_w + 3;
+          const int rh_left = it.get_width() - 10 - rh_w;
+          auto *ppm_font = (ppm_x + ppm_w + 6 <= rh_left) ? id(literata_med_b) : id(literata_smol);
+          it.print(co2_x, 0, id(literata_b), COLOR_OFF, co2_txt);
+          it.print(ppm_x, 0, ppm_font, COLOR_OFF, "ppm");
+          it.print(it.get_width() -10, 0, id(literata_b), COLOR_OFF, TextAlign::RIGHT, rh_txt);
+          it.printf(it.get_width()/2, 30, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\ue1ff%.1f°C", id(scd30_t).state);
           
           const int y_grid = 250;
           const int graph_width = 205;
@@ -575,20 +581,39 @@ display:
           {
             graph_lim = 0;
           }
-          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
-          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
+          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
+          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
 
           // Graph
-          it.graph(graph_start_x, graph_start_y, id(temp_graph));
+          it.graph(graph_start_x, graph_start_y, id(temp_graph), COLOR_OFF);
           if (id(draw_hold)) id(draw_hold)(it);
         
 
       - id: page_rh_graph
         lambda: |-
-          it.printf(10, 0, id(literata_b), "\ue1ff%.1f°C", id(scd30_t).state);
-          it.printf(it.get_width() -2, 0, id(literata_med_b), TextAlign::RIGHT, "ppm");
-          it.printf(it.get_width() -50, 0, id(literata_b), TextAlign::RIGHT, "\ue7b0%.0f", id(scd30_co2).state);
-          it.printf(it.get_width()/2, 30, id(literata_med_b), TextAlign::CENTER_HORIZONTAL, "\uf87e%.1f%%", id(scd30_rh).state);
+          // Temperature on the left, CO2 icon + value + "ppm" right-anchored. The value sits a fixed
+          // 3 px before "ppm" whatever its width, and "ppm" drops to the smaller font only if the
+          // larger one would crowd the temperature. The temperature starts at x=2 (not 10) so a
+          // 5 digit reading (the SCD30 tops out at 10000 ppm) still clears even "-10.5°C".
+          char temp_txt[24];
+          char co2_txt[24];
+          snprintf(temp_txt, sizeof(temp_txt), "\ue1ff%.1f°C", id(scd30_t).state);
+          snprintf(co2_txt, sizeof(co2_txt), "\ue7b0%.0f", id(scd30_co2).state);
+          int temp_w, co2_w, ppm_w, x_off, baseline, height;
+          id(literata_b).measure(temp_txt, &temp_w, &x_off, &baseline, &height);
+          id(literata_b).measure(co2_txt, &co2_w, &x_off, &baseline, &height);
+          id(literata_med_b).measure("ppm", &ppm_w, &x_off, &baseline, &height);
+          const int temp_x = 2;
+          const int ppm_right = it.get_width() - 2;
+          auto *ppm_font = id(literata_med_b);
+          if ((ppm_right - ppm_w - 3) - co2_w - (temp_x + temp_w) < 6) {
+            ppm_font = id(literata_smol);
+            id(literata_smol).measure("ppm", &ppm_w, &x_off, &baseline, &height);
+          }
+          it.print(temp_x, 0, id(literata_b), COLOR_OFF, temp_txt);
+          it.print(ppm_right, 0, ppm_font, COLOR_OFF, TextAlign::RIGHT, "ppm");
+          it.print(ppm_right - ppm_w - 3, 0, id(literata_b), COLOR_OFF, TextAlign::RIGHT, co2_txt);
+          it.printf(it.get_width()/2, 30, id(literata_med_b), COLOR_OFF, TextAlign::CENTER_HORIZONTAL, "\uf87e%.1f%%", id(scd30_rh).state);
           
           const int y_grid = 250;
           const int graph_width = 205;
@@ -602,45 +627,56 @@ display:
           {
             graph_lim = 0;
           }
-          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
-          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
+          it.printf(it.get_width()-210, graph_start_y, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim);
+          it.printf(it.get_width()-210, graph_start_y + graph_height/2, id(literata_smol), COLOR_OFF, TextAlign::CENTER_RIGHT, "%.0f", graph_lim/2);
 
           // Graph
-          it.graph(graph_start_x, graph_start_y, id(humi_graph));
+          it.graph(graph_start_x, graph_start_y, id(humi_graph), COLOR_OFF);
           if (id(draw_hold)) id(draw_hold)(it);
 
       - id: ap_info 
         lambda: |-
           int line_height = 15;
-          it.print(0, 0, id(mono_reg), "Config mode.");
-          it.print(0, line_height*1, id(mono_reg), "Connect to:");
-          it.print(0, line_height*2, id(mono_reg), "SSID: InKli Config");
-          it.printf(0, line_height*3, id(mono_reg), "Pass  %s", id(ap_password));
-          it.printf(0, line_height*4, id(mono_reg), "ID    %s", App.get_name().c_str());
+          it.print(0, 0, id(mono_reg), COLOR_OFF, "Config mode.");
+          it.print(0, line_height*1, id(mono_reg), COLOR_OFF, "Connect to:");
+          it.print(0, line_height*2, id(mono_reg), COLOR_OFF, "SSID: InKli Config");
+          it.printf(0, line_height*3, id(mono_reg), COLOR_OFF, "Pass  %s", id(ap_password));
+          it.printf(0, line_height*4, id(mono_reg), COLOR_OFF, "ID    %s", App.get_name().c_str());
           if (id(draw_hold)) id(draw_hold)(it);
 
       - id: page_wifi_info 
         lambda: |-
           int line_height = 15;
-          it.printf(0, 0, id(mono_med), "IP: %s", id(wifi_ip_addr).state.c_str());
-          it.printf(0, line_height*1, id(mono_med), "MAC: %s", id(wifi_mac).state.c_str());
-          it.printf(0, line_height*2, id(mono_med), "SSID: %s", id(wifi_ssid).state.c_str());
-          it.printf(0, line_height*3, id(mono_med), "Signal strength: %.0f%%", id(wifi_sig).state);
-          it.printf(0, line_height*3, id(mono_med), "Signal strength: %.0f%%", id(wifi_sig).state);
-          it.printf(0, line_height*4, id(mono_med), "Pass  %s", id(ap_password));
+          it.printf(0, 0, id(mono_med), COLOR_OFF, "IP: %s", id(wifi_ip_addr).state.c_str());
+          it.printf(0, line_height*1, id(mono_med), COLOR_OFF, "MAC: %s", id(wifi_mac).state.c_str());
+          it.printf(0, line_height*2, id(mono_med), COLOR_OFF, "SSID: %s", id(wifi_ssid).state.c_str());
+          it.printf(0, line_height*3, id(mono_med), COLOR_OFF, "Signal strength: %.0f%%", id(wifi_sig).state);
+          it.printf(0, line_height*3, id(mono_med), COLOR_OFF, "Signal strength: %.0f%%", id(wifi_sig).state);
+          it.printf(0, line_height*4, id(mono_med), COLOR_OFF, "Pass  %s", id(ap_password));
           if (id(draw_hold)) id(draw_hold)(it);
       - id: page_updating 
         lambda: |-
-          it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Updating");
+          it.print(250/2, 122/2, id(literata_b), COLOR_OFF, TextAlign::CENTER, "Updating");
       - id: page_update_failed
         lambda: |-
-          it.print(250/2, 122/2, id(literata_b), TextAlign::CENTER, "Update Failed");
+          it.print(250/2, 122/2, id(literata_b), COLOR_OFF, TextAlign::CENTER, "Update Failed");
     on_page_change:
       then:
-        - component.update: disp  # Partial update; the full refresh comes once the user is idle
+        - script.execute: refresh_display  # Partial update; the full refresh comes once the user is idle
         - script.execute: full_refresh_when_idle
 
 ## Board and project config
+
+# The 2.13in-v3 display model in epaper_spi needs a one-line fix (base_image_required, esphome/esphome#22959)
+# that is not in a release yet; without it partial refreshes come out grey. Pinned to the PR's commit.
+# Remove this block (and bump esphome-version / min_version) once the fix ships in an ESPHome release.
+external_components:
+  - source:
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: c4155f3b286868a848bb51556b45d2ce6bbdc20b
+      path: esphome/components
+    components: [epaper_spi]
 
 esp32:
   board: m5stack-core-esp32-16M
@@ -735,21 +771,21 @@ esphome:
               const int bar_x = 4, bar_w = w - 8, bar_y = y0 + 21, bar_h = 8;
               const int tick_x = bar_x + (int) (bar_w * (float) setup_ms / update_ms);
 
-              it.filled_rectangle(0, y0, w, box_h, COLOR_OFF);
-              it.rectangle(0, y0, w, box_h, COLOR_ON);
+              it.filled_rectangle(0, y0, w, box_h, COLOR_ON);   // epaper_spi: COLOR_ON is white paper, COLOR_OFF is black ink
+              it.rectangle(0, y0, w, box_h, COLOR_OFF);
 
               // Labels sit above the bar: the 2s action over its tick, "update" at the end.
               // On the setup screens the 2s action leaves setup, so say where it goes.
               auto *page = id(disp).get_active_page();
               const bool in_setup = page == id(ap_info) || page == id(page_setup);
-              it.print(tick_x, y0 + 3, id(mono_smol), TextAlign::TOP_CENTER, in_setup ? "sensors" : "setup");
-              it.print(bar_x + bar_w, y0 + 3, id(mono_smol), TextAlign::TOP_RIGHT, "update");
+              it.print(tick_x, y0 + 3, id(mono_smol), COLOR_OFF, TextAlign::TOP_CENTER, in_setup ? "sensors" : "setup");
+              it.print(bar_x + bar_w, y0 + 3, id(mono_smol), COLOR_OFF, TextAlign::TOP_RIGHT, "update");
 
-              it.rectangle(bar_x, bar_y, bar_w, bar_h, COLOR_ON);
+              it.rectangle(bar_x, bar_y, bar_w, bar_h, COLOR_OFF);
               const int fill = (int) ((bar_w - 2) * (float) std::min<uint32_t>(held, update_ms) / update_ms);
-              it.filled_rectangle(bar_x + 1, bar_y + 1, fill, bar_h - 2, COLOR_ON);
+              it.filled_rectangle(bar_x + 1, bar_y + 1, fill, bar_h - 2, COLOR_OFF);
               // Tick at the setup threshold, reaching up to its label
-              it.line(tick_x, bar_y - 4, tick_x, bar_y + bar_h - 1, COLOR_ON);
+              it.line(tick_x, bar_y - 4, tick_x, bar_y + bar_h - 1, COLOR_OFF);
             };
 
     - priority: 300
