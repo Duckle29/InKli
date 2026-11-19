@@ -1,0 +1,12 @@
+# InKli with Panasonic heat pump control: the regular firmware (inkli.yaml) plus heatpump.yaml.
+substitutions:
+  # Keep this as the bare word dev, written exactly like the line below: the publish workflow
+  # swaps it for the release tag. Local builds report dev.
+  version: dev
+  entry_file: inkli-heatpump.yaml
+  project_name: duckle29.inkli-heatpump
+  ota_file: inkli-heatpump-esp32.ota.bin
+
+packages:
+  inkli: !include inkli.yaml
+  heatpump: !include heatpump.yaml
