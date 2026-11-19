@@ -1,7 +1,9 @@
 substitutions:
   name: "inkli"
   friendly_name: "InKli"
-  version: "v0.1.1"
+  # Keep this as the bare word dev, written exactly like the line below: the publish workflow
+  # swaps it for the release tag. Local builds report dev.
+  version: dev
 
 # Enable logging
 logger:
@@ -263,12 +265,49 @@ script:
 
 climate:
   - platform: panasonic_ir
-    id: panasonic_ac
-    name: "AC"
+    id: heat_pump
+    name: "Heat pump"
     model: PKE
     receiver_id: rcvr
     sensor: scd30_t
     humidity_sensor: scd30_rh
+
+select:
+  # The component's own vane select offers "Auto" and "1" to "5" (1 = highest). It is kept
+  # (hidden) as the thing that talks to the heat pump, and the friendly one below sits on top.
+  # Both lists have the same order, so the index maps straight across.
+  - platform: panasonic_ir
+    panasonic_ir_id: heat_pump
+    vane_position:
+      id: vane_raw
+      internal: true
+      # Follows the vane when the original remote (or a mode change) moves it
+      on_value:
+        - lambda: id(vane_pos).publish_state(i);
+
+  - platform: template
+    id: vane_pos
+    name: "Heat pump vane position"
+    icon: "mdi:arrow-expand-vertical"
+    options:
+      - Auto
+      - Highest
+      - High
+      - Middle
+      - Low
+      - Lowest
+    optimistic: false
+    set_action:
+      # Only the chosen name (x) is available here, so look up its position. Same order as the
+      # options above and as the component's own select, so the position is also its index there.
+      - select.set_index:
+          id: vane_raw
+          index: !lambda |-
+            static const char *const names[] = {"Auto", "Highest", "High", "Middle", "Low", "Lowest"};
+            for (size_t n = 0; n < 6; n++) {
+              if (x == names[n]) return n;
+            }
+            return (size_t) 0;
 
 output:
   - platform: ledc
@@ -722,6 +761,11 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
+    - priority: -100
+      then:
+        - lambda: |-
+            auto idx = id(vane_raw).active_index();
+            if (idx.has_value()) id(vane_pos).publish_state(*idx);
     - priority: -300
       then:
         - delay: 5min
