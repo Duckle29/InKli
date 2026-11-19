@@ -1,0 +1,77 @@
+# Heat pump add-on for InKli: Panasonic IR control, a "Heat pump" climate entity and a vane position select.
+# Not a standalone config. inkli-heatpump.yaml combines it with inkli.yaml.
+# It relies on the SCD30 sensors (scd30_t, scd30_rh) defined there.
+
+# IR. Only the left LED (IR_TX_L, GPIO23) is populated on this board for now;
+# the right one is IR_TX_R on GPIO25.
+remote_transmitter:
+  pin: GPIO23
+  carrier_duty_percent: 50%
+
+remote_receiver:
+  id: rcvr
+  pin:
+    number: GPIO14  # TSOP38G36 output is active low
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  # A Panasonic AC frame is 220 symbols; the default of 192 is too small and
+  # the frame would be dropped. 256 is the ESP32 value from the ESPHome docs.
+  rmt_symbols: 256
+  receive_symbols: 256
+
+climate:
+  - platform: panasonic_ir
+    id: heat_pump
+    name: "Heat pump"
+    model: PKE
+    receiver_id: rcvr
+    sensor: scd30_t
+    humidity_sensor: scd30_rh
+
+select:
+  # The component's own vane select offers "Auto" and "1" to "5" (1 = highest). It is kept
+  # (hidden) as the thing that talks to the heat pump, and the friendly one below sits on top.
+  # Both lists have the same order, so the index maps straight across.
+  - platform: panasonic_ir
+    panasonic_ir_id: heat_pump
+    vane_position:
+      id: vane_raw
+      internal: true
+      # Follows the vane when the original remote (or a mode change) moves it
+      on_value:
+        - lambda: id(vane_pos).publish_state(i);
+
+  - platform: template
+    id: vane_pos
+    name: "Heat pump vane position"
+    icon: "mdi:arrow-expand-vertical"
+    options:
+      - Auto
+      - Highest
+      - High
+      - Middle
+      - Low
+      - Lowest
+    optimistic: false
+    set_action:
+      # Only the chosen name (x) is available here, so look up its position. Same order as the
+      # options above and as the component's own select, so the position is also its index there.
+      - select.set_index:
+          id: vane_raw
+          index: !lambda |-
+            static const char *const names[] = {"Auto", "Highest", "High", "Middle", "Low", "Lowest"};
+            for (size_t n = 0; n < 6; n++) {
+              if (x == names[n]) return n;
+            }
+            return (size_t) 0;
+
+esphome:
+  on_boot:
+    # The template select has no state until something publishes one, so copy it over once at boot
+    - priority: -100
+      then:
+        - lambda: |-
+            auto idx = id(vane_raw).active_index();
+            if (idx.has_value()) id(vane_pos).publish_state(*idx);

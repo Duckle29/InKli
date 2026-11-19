@@ -31,3 +31,12 @@ I'm pretty happy with the simple display layout, and will see tomorrow how the g
 
 The IR blasters are there because one of these sensors will pull double duty, and act as an IR remote for a heat pump. 
 On the rest of the PCBs these probably won't be populated.
+
+## Firmware
+
+There are two variants, both in `esphome/`:
+
+- `inkli.yaml`: the device itself (CO2, temperature and humidity on the e-paper display, Home Assistant, Wi-Fi setup). This is the one for boards without the IR LED fitted.
+- `inkli-heatpump.yaml`: the same, plus Panasonic heat pump control over the IR LED. It includes `inkli.yaml` and adds `heatpump.yaml`.
+
+Each release has both: `inkli-esp32.*` and `inkli-heatpump-esp32.*`. A device updates itself (hold the button for 6 s) from the file with its own name on the OTA server.

@@ -14,6 +14,9 @@ jobs:
     with:
       files: |
         esphome/inkli.yaml
+        esphome/inkli-heatpump.yaml
+      # Name the firmware files after the YAML files: inkli-esp32.* and inkli-heatpump-esp32.*
+      name-from-file: true
       esphome-version: 2026.11.0  # keep in step with min_version in esphome/inkli.yaml
 
       release-summary: ${{ github.event.release.body }}

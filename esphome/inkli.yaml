@@ -4,6 +4,11 @@ substitutions:
   # Keep this as the bare word dev, written exactly like the line below: the publish workflow
   # swaps it for the release tag. Local builds report dev.
   version: dev
+  # What the two variants (inkli.yaml and inkli-heatpump.yaml) set differently:
+  entry_file: inkli.yaml
+  project_name: duckle29.inkli
+  # Binary the "hold 6 s" update fetches from the OTA server; each variant has its own
+  ota_file: inkli-esp32.ota.bin
 
 # Enable logging
 logger:
@@ -88,8 +93,8 @@ binary_sensor:
                   epaper_spi.is_updating: disp
               timeout: 10s
           - ota.http_request.flash:
-              md5_url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin.md5
-              url: https://otaserv.mikkel.cc/inkli/inkli-esp32.ota.bin
+              md5_url: https://otaserv.mikkel.cc/inkli/${ota_file}.md5
+              url: https://otaserv.mikkel.cc/inkli/${ota_file}
           - display.page.show: page_update_failed
           - delay: 10s
           - display.page.show: page_co2_graph
@@ -251,76 +256,11 @@ script:
       - epaper_spi.full_update_next: disp
       - component.update: disp
 
-climate:
-  - platform: panasonic_ir
-    id: heat_pump
-    name: "Heat pump"
-    model: PKE
-    receiver_id: rcvr
-    sensor: scd30_t
-    humidity_sensor: scd30_rh
-
-select:
-  # The component's own vane select offers "Auto" and "1" to "5" (1 = highest). It is kept
-  # (hidden) as the thing that talks to the heat pump, and the friendly one below sits on top.
-  # Both lists have the same order, so the index maps straight across.
-  - platform: panasonic_ir
-    panasonic_ir_id: heat_pump
-    vane_position:
-      id: vane_raw
-      internal: true
-      # Follows the vane when the original remote (or a mode change) moves it
-      on_value:
-        - lambda: id(vane_pos).publish_state(i);
-
-  - platform: template
-    id: vane_pos
-    name: "Heat pump vane position"
-    icon: "mdi:arrow-expand-vertical"
-    options:
-      - Auto
-      - Highest
-      - High
-      - Middle
-      - Low
-      - Lowest
-    optimistic: false
-    set_action:
-      # Only the chosen name (x) is available here, so look up its position. Same order as the
-      # options above and as the component's own select, so the position is also its index there.
-      - select.set_index:
-          id: vane_raw
-          index: !lambda |-
-            static const char *const names[] = {"Auto", "Highest", "High", "Middle", "Low", "Lowest"};
-            for (size_t n = 0; n < 6; n++) {
-              if (x == names[n]) return n;
-            }
-            return (size_t) 0;
-
 output:
   - platform: ledc
     id: led_status
     pin: GPIO2
     frequency: 19531
-
-# IR. Only the left LED (IR_TX_L, GPIO23) is populated on this board for now;
-# the right one is IR_TX_R on GPIO25.
-remote_transmitter:
-  pin: GPIO23
-  carrier_duty_percent: 50%
-
-remote_receiver:
-  id: rcvr
-  pin:
-    number: GPIO14  # TSOP38G36 output is active low
-    inverted: true
-    mode:
-      input: true
-      pullup: true
-  # A Panasonic AC frame is 220 symbols; the default of 192 is too small and
-  # the frame would be dropped. 256 is the ESP32 value from the ESPHome docs.
-  rmt_symbols: 256
-  receive_symbols: 256
 
 # On epaper_spi the old COLOR_ON / COLOR_OFF constants mean white / black ink (the reverse of waveshare_epaper),
 # so colours are always written out as Color::BLACK / Color::WHITE. The graph traces need an explicit black too.
@@ -686,7 +626,7 @@ esp32:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: "github://Duckle29/InKli/esphome/inkli.yaml@${version}"
+  package_import_url: "github://Duckle29/InKli/esphome/${entry_file}@${version}"
   import_full_config: false
 
 esphome:
@@ -694,10 +634,10 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
 
-  min_version: 2026.11.0  # panasonic_ir climate
+  min_version: 2026.11.0  # epaper_spi; panasonic_ir for the heat pump variant
 
   project:
-    name: "duckle29.inkli"
+    name: "${project_name}"
     version: "${version}"
 
   on_boot:
@@ -798,11 +738,6 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
-    - priority: -100
-      then:
-        - lambda: |-
-            auto idx = id(vane_raw).active_index();
-            if (idx.has_value()) id(vane_pos).publish_state(*idx);
     - priority: -300
       then:
         - delay: 5min
