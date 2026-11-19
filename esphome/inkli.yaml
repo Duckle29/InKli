@@ -649,7 +649,7 @@ esp32:
     type: esp-idf
 
 dashboard_import:
-  package_import_url: "github://Duckle29/SCD30_ESP/esphome/inkli.yaml@${version}"
+  package_import_url: "github://Duckle29/InKli/esphome/inkli.yaml@${version}"
   import_full_config: false
 
 esphome:
