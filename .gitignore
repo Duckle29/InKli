@@ -10,3 +10,4 @@ scd30_esp.step
 .venv/*
 esphome/.esphome/**
 esphome/.gitignore
+*.FCBak
