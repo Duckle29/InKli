@@ -123,6 +123,7 @@ sensor:
                 - display.page.show: page_co2_graph
 
   - platform: scd30
+    id: scd30_hub
     i2c_id: i2c_scd30
     address: 0x61
     update_interval: 30s
@@ -201,6 +202,27 @@ number:
     icon: "mdi:molecule-co2"
     entity_category: "config"
 
+switch:
+  # The SCD30 corrects its own CO2 baseline over time. It assumes it sees fresh air (about 400 ppm) for
+  # an hour or so each day, which is wrong in a room that is never aired, so it can be turned off here.
+  # The ESPHome driver only sets this once at boot, so the switch sends the sensor command itself
+  # (see apply_asc). On by default; the choice is kept across reboots.
+  - platform: template
+    id: asc_switch
+    name: "CO2 automatic calibration"
+    icon: "mdi:auto-fix"
+    entity_category: "config"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - script.execute:
+          id: apply_asc
+          enable: true
+    turn_off_action:
+      - script.execute:
+          id: apply_asc
+          enable: false
+
 # Redraw the display while the button is held so the hold-progress bar moves.
 # Only runs between 0.5s and ~6.4s of a hold (the bar is full at 6s).
 interval:
@@ -255,6 +277,27 @@ script:
           timeout: 6s
       - epaper_spi.full_update_next: disp
       - component.update: disp
+
+  # Send the SCD30 its automatic self calibration setting (command 0x5306) and read it back. The driver
+  # does this once in its own setup(), which always turns it on, so nothing happens here until boot has
+  # finished; the boot hook then applies the stored state of the switch.
+  - id: apply_asc
+    parameters:
+      enable: bool
+    then:
+      - lambda: |-
+          if (!id(scd30_ready)) return;
+          bool ok = id(scd30_hub).write_command((uint16_t) 0x5306, (uint16_t) (enable ? 1 : 0));
+          uint16_t readback = 0xFFFF;
+          if (ok) {
+            delay(30);  // the SCD30 needs a moment between commands, as in the driver
+            ok = id(scd30_hub).get_register((uint16_t) 0x5306, readback, 3);
+          }
+          if (ok) {
+            ESP_LOGI("asc", "Automatic self calibration %s (the sensor reports %u)", enable ? "on" : "off", (unsigned) readback);
+          } else {
+            ESP_LOGW("asc", "Could not set automatic self calibration to %s", enable ? "on" : "off");
+          }
 
 output:
   - platform: ledc
@@ -738,6 +781,13 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
+    - priority: -100
+      then:
+        - lambda: id(scd30_ready) = true;
+        # The SCD30 driver always turns automatic calibration on in its own setup(); put the stored choice back
+        - script.execute:
+            id: apply_asc
+            enable: !lambda return id(asc_switch).state;
     - priority: -300
       then:
         - delay: 5min
@@ -748,6 +798,11 @@ esphome:
               wifi.disable:
 
 globals:
+  # Set at the end of boot; apply_asc does nothing before that
+  - id: scd30_ready
+    type: bool
+    initial_value: "false"
+
   - id: ap_password
     type: char[9]
 
