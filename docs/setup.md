@@ -22,8 +22,11 @@ If using Improv Serial, make sure to connect the device to your computer with a 
 ## 3: Through the device backup access point
 This method is done easiest through a phone, but can be done on anything with wifi.
 
-Go to your wifi settings, and connect to the InKli Config hotspot. It'll have a 6 character address after it's name too.
-To get the password for the network, push the front button to go to the AP info screen.
+Go to your wifi settings, and connect to the "InKli Config" hotspot.
+To get the password for the network, push the front button until you reach the config screen (it shows the SSID and password).
+The screens cycle: welcome, info, config, and back to welcome. So from the welcome screen it's two pushes.
+
+The info screen shows the device's ID, IP address and DNS servers.
 
 Once connected, you should be prompted to "log in" to the network. If you're not prompted, got to your browser and navigate to http://192.168.4.1
 
@@ -31,7 +34,19 @@ On this page, you can then select your wifi, and sign in to it.
 
 That's it! :) Your InKli should now be on your network.
 
+## Changing wifi
+The hotspot only runs while the InKli isn't connected to a network. If it's already on wifi, the config screen shows
+"Connected to <your network>" instead of the hotspot details.
+
+To set it up on a different network, go to the config screen (hold the front button for 2 seconds, then push until you
+reach it), and hold the button for 4 seconds. The bar shows "forget wifi" at that point. Let go, and the InKli forgets
+the network and restarts. After a few seconds the "InKli Config" hotspot is back, and you can follow the steps above.
+
 ## Homeassistant
 If you're running a homeassistant setup on the network with your InKli, you should now be able to find your InKli there.
+
+The temperature offset can be calibrated from Home Assistant. There are two, "Temperature offset (wifi connected)" and
+"Temperature offset (wifi not connected)", as the radio warms the case a bit when it's on. They're disabled by default,
+so enable the entities in Home Assistant if you want to adjust them.
 
 Further HA instructions to follow
