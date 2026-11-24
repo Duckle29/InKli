@@ -55,32 +55,24 @@ binary_sensor:
           - display.page.show_next: disp
 
       - min_length: 2s
+        max_length: 4s
+        then:
+          - script.execute: toggle_setup
+
+      # 4s: on the config screen while on wifi, forget the wifi credentials. Anywhere else this is
+      # still the setup toggle, same as the 2s step.
+      - min_length: 4s
         max_length: 6s
         then:
           - if:
               condition:
-                or:
-                  - display.is_displaying_page: ap_info
-                  - display.is_displaying_page: page_setup
-              then:
-                - display.page.show: page_co2_graph
-              else:
-                - display.page.show: ap_info
-          - if:
-              condition:
                 and:
-                  - not:
-                    - wifi.enabled:
                   - display.is_displaying_page: ap_info
+                  - wifi.connected:
               then:
-                - wifi.enable:
-                # TODO: non-blocking delay - delay: 5min
-                - if:
-                    condition:
-                      wifi.connected:
-                    else:
-                      wifi.disable:
-
+                - script.execute: forget_wifi
+              else:
+                - script.execute: toggle_setup
 
       - min_length: 6s
         max_length: 60s
@@ -127,7 +119,7 @@ sensor:
     i2c_id: i2c_scd30
     address: 0x61
     update_interval: 30s
-    temperature_offset: 3
+    # temperature_offset is set at run time from the two offset numbers below (see apply_temp_offset)
     co2:
       id: scd30_co2
       name: "co2"
@@ -191,6 +183,47 @@ button:
             value: !lambda 'return id(co2_cal).state;'
 
 number:
+  # Temperature offsets, written to the SCD30 itself (so its humidity reading is corrected too).
+  # The radio heats the case, so the right offset differs with wifi on or off: the one matching the
+  # current wifi state is applied. Hidden (disabled) in Home Assistant until a user who wants to
+  # calibrate enables the entities. The value is kept across reboots.
+  - platform: template
+    id: temp_offset_wifi
+    name: "Temperature offset (wifi connected)"
+    icon: "mdi:thermometer-lines"
+    entity_category: "config"
+    disabled_by_default: true
+    restore_value: true
+    initial_value: 3.0
+    min_value: 0
+    max_value: 20
+    step: 0.1
+    unit_of_measurement: "K"
+    mode: box
+    optimistic: false
+    set_action:
+      # The new value is only published after this action, and apply_temp_offset reads the state
+      - lambda: id(temp_offset_wifi).publish_state(x);
+      - script.execute: apply_temp_offset
+
+  - platform: template
+    id: temp_offset_nowifi
+    name: "Temperature offset (wifi not connected)"
+    icon: "mdi:thermometer-lines"
+    entity_category: "config"
+    disabled_by_default: true
+    restore_value: true
+    initial_value: 3.0
+    min_value: 0
+    max_value: 20
+    step: 0.1
+    unit_of_measurement: "K"
+    mode: box
+    optimistic: false
+    set_action:
+      - lambda: id(temp_offset_nowifi).publish_state(x);
+      - script.execute: apply_temp_offset
+
   - platform: template
     name: "CO2 manual calibration value"
     optimistic: true
@@ -242,6 +275,51 @@ interval:
             - component.update: disp
 
 script:
+  # What a 2-4 s hold does: go into / out of the setup screens
+  - id: toggle_setup
+    then:
+      - if:
+          condition:
+            or:
+              - display.is_displaying_page: ap_info
+              - display.is_displaying_page: page_setup
+              - display.is_displaying_page: page_info
+          then:
+            - display.page.show: page_co2_graph
+          else:
+            - display.page.show: ap_info
+      - if:
+          condition:
+            and:
+              - not:
+                - wifi.enabled:
+              - display.is_displaying_page: ap_info
+          then:
+            - wifi.enable:
+            # TODO: non-blocking delay - delay: 5min
+            - if:
+                condition:
+                  wifi.connected:
+                else:
+                  wifi.disable:
+
+  # Forget the stored wifi credentials and restart. The ESPHome wifi component can only overwrite them,
+  # not erase them, so empty ones are stored; on the next boot the empty network can never connect, and
+  # the setup access point is brought up quickly (see the on_boot hook).
+  - id: forget_wifi
+    mode: single
+    then:
+      - lambda: id(wifi_id).save_wifi_sta("", "");
+      - display.page.show: page_wifi_forgotten
+      - script.wait: refresh_display
+      - wait_until:
+          condition:
+            not:
+              epaper_spi.is_updating: disp
+          timeout: 10s
+      - delay: 1s
+      - lambda: App.safe_reboot();
+
   # Update the display once any refresh in flight has finished. epaper_spi refuses an update
   # requested while it is busy (it logs an error and drops it), so every redraw goes through here.
   - id: refresh_display
@@ -297,6 +375,29 @@ script:
             ESP_LOGI("asc", "Automatic self calibration %s (the sensor reports %u)", enable ? "on" : "off", (unsigned) readback);
           } else {
             ESP_LOGW("asc", "Could not set automatic self calibration to %s", enable ? "on" : "off");
+          }
+
+  # Send the SCD30 the temperature offset (command 0x5403, in 0.01 K, never negative) for the current
+  # wifi state and read it back. Run at the end of boot, on every wifi connect/disconnect, and when
+  # either offset number changes. Does nothing before the sensor has been set up.
+  - id: apply_temp_offset
+    mode: restart
+    then:
+      - lambda: |-
+          if (!id(scd30_ready)) return;
+          const bool wifi_up = id(wifi_id).is_connected();
+          float offset = wifi_up ? id(temp_offset_wifi).state : id(temp_offset_nowifi).state;
+          if (std::isnan(offset) || offset < 0) offset = 0;
+          bool ok = id(scd30_hub).write_command((uint16_t) 0x5403, (uint16_t) lroundf(offset * 100.0f));
+          uint16_t readback = 0xFFFF;
+          if (ok) {
+            delay(30);  // the SCD30 needs a moment between commands, as in the driver
+            ok = id(scd30_hub).get_register((uint16_t) 0x5403, readback, 3);
+          }
+          if (ok) {
+            ESP_LOGI("temp_offset", "Temperature offset %.2f K for wifi %s (the sensor reports %.2f K)", offset, wifi_up ? "connected" : "not connected", readback / 100.0f);
+          } else {
+            ESP_LOGW("temp_offset", "Could not set the temperature offset to %.2f K", offset);
           }
 
 output:
@@ -620,12 +721,23 @@ display:
 
       - id: ap_info 
         lambda: |-
-          int line_height = 17;
-          it.print(0, 0, id(mono_reg), Color::BLACK, "Config mode.");
-          it.print(0, line_height*1, id(mono_reg), Color::BLACK, "Connect to:");
-          it.print(0, line_height*2, id(mono_reg), Color::BLACK, "SSID: InKli Config");
-          it.printf(0, line_height*3, id(mono_reg), Color::BLACK, "Pass  %s", id(ap_password));
-          it.printf(0, line_height*4, id(mono_reg), Color::BLACK, "ID    %s", App.get_name().c_str());
+          if (id(wifi_id).is_connected())
+          {
+            // The setup access point is not up while connected, so offer to drop the connection instead
+            std::string ssid = id(wifi_ssid).state;
+            if (ssid.size() > 25) ssid = ssid.substr(0, 23) + "..";
+            it.print(0, 0, id(mono_reg), Color::BLACK, "Connected to");
+            it.print(0, 22, id(mono_med), Color::BLACK, ssid.c_str());
+            it.print(0, 44, id(mono_med), Color::BLACK, "Hold 4s to forget wifi");
+          }
+          else
+          {
+            int line_height = 17;
+            it.print(0, 0, id(mono_reg), Color::BLACK, "Config mode.");
+            it.print(0, line_height*1, id(mono_reg), Color::BLACK, "Connect to:");
+            it.print(0, line_height*2, id(mono_reg), Color::BLACK, "SSID: InKli Config");
+            it.printf(0, line_height*3, id(mono_reg), Color::BLACK, "Pass  %s", id(ap_password));
+          }
           if (id(draw_hold)) id(draw_hold)(it);
 
       - id: page_wifi_info 
@@ -638,9 +750,26 @@ display:
           it.printf(0, line_height*3, id(mono_med), Color::BLACK, "Signal strength: %.0f%%", id(wifi_sig).state);
           it.printf(0, line_height*4, id(mono_med), Color::BLACK, "Pass  %s", id(ap_password));
           if (id(draw_hold)) id(draw_hold)(it);
+      - id: page_info
+        lambda: |-
+          const int line_height = 15;
+          char dns[network::IP_ADDRESS_BUFFER_SIZE];
+          const std::string &ip = id(wifi_ip_addr).state;
+          it.printf(0, 0, id(mono_med), Color::BLACK, "ID:  %s", App.get_name().c_str());
+          it.printf(0, line_height*1, id(mono_med), Color::BLACK, "IP:  %s", ip.empty() ? "-" : ip.c_str());
+          for (int i = 0; i < 2; i++)
+          {
+            id(wifi_id).get_dns_address(i).str_to(dns);
+            it.printf(0, line_height*(2+i), id(mono_med), Color::BLACK, "DNS%d %s", i+1, dns);
+          }
+          if (id(draw_hold)) id(draw_hold)(it);
       - id: page_updating 
         lambda: |-
           it.print(250/2, 122/2, id(literata_b), Color::BLACK, TextAlign::CENTER, "Updating");
+      - id: page_wifi_forgotten
+        lambda: |-
+          it.print(250/2, 122/2 - 12, id(literata_med_b), Color::BLACK, TextAlign::CENTER, "Wifi forgotten");
+          it.print(250/2, 122/2 + 14, id(mono_med), Color::BLACK, TextAlign::CENTER, "Restarting...");
       - id: page_update_failed
         lambda: |-
           it.print(250/2, 122/2, id(literata_b), Color::BLACK, TextAlign::CENTER, "Update Failed");
@@ -722,8 +851,8 @@ esphome:
                              |    |______<______|
               page_wifi_info-|
 
-              ap_info -> page_setup
-                |______<______|
+              ap_info -> page_setup -> page_info
+                |______________<____________|
 
               >page_updating<
 
@@ -732,7 +861,8 @@ esphome:
             id(page_wifi_info).set_next(id(page_co2_graph));
 
             id(ap_info).set_next(id(page_setup));
-            id(page_setup).set_next(id(ap_info));
+            id(page_setup).set_next(id(page_info));
+            id(page_info).set_next(id(ap_info));
 
             id(page_co2_graph).set_next(id(page_t_graph));
             id(page_t_graph).set_next(id(page_rh_graph));
@@ -740,7 +870,7 @@ esphome:
 
             id(page_updating).set_next(id(page_updating));
 
-        # Hold-progress bar. Bar fills over 6s. Ticks: 2s = Wi-Fi setup toggle, 6s (end of bar) = firmware update.
+        # Hold-progress bar. Bar fills over 6s. Ticks: 2s = Wi-Fi setup toggle, 4s = forget wifi (config screen while connected), 6s (end of bar) = firmware update.
         # Keep these in sync with the min_length values of the btn on_click handlers.
         - lambda: |-
             id(draw_hold) = [](esphome::display::Display &it) {
@@ -748,12 +878,13 @@ esphome:
               const uint32_t held = millis() - id(btn_press_ms);
               if (held < 500) return;  // Plain clicks shouldn't flash a bar
 
-              const uint32_t setup_ms = 2000, update_ms = 6000;
+              const uint32_t setup_ms = 2000, forget_ms = 4000, update_ms = 6000;
               const int w = it.get_width();
               const int box_h = 34;
               const int y0 = it.get_height() - box_h;
               const int bar_x = 4, bar_w = w - 8, bar_y = y0 + 21, bar_h = 8;
               const int tick_x = bar_x + (int) (bar_w * (float) setup_ms / update_ms);
+              const int forget_x = bar_x + (int) (bar_w * (float) forget_ms / update_ms);
 
               it.filled_rectangle(0, y0, w, box_h, Color::WHITE);
               it.rectangle(0, y0, w, box_h, Color::BLACK);
@@ -761,15 +892,20 @@ esphome:
               // Labels sit above the bar: the 2s action over its tick, "update" at the end.
               // On the setup screens the 2s action leaves setup, so say where it goes.
               auto *page = id(disp).get_active_page();
-              const bool in_setup = page == id(ap_info) || page == id(page_setup);
+              const bool in_setup = page == id(ap_info) || page == id(page_setup) || page == id(page_info);
+              // Config screen while on wifi: the 4s step forgets the wifi credentials
+              const bool can_forget = page == id(ap_info) && id(wifi_id).is_connected();
               it.print(tick_x, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_CENTER, in_setup ? "sensors" : "setup");
-              it.print(bar_x + bar_w, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_RIGHT, "update");
+              // No "update" label on the forget screen: it would sit right next to "forget wifi"
+              if (can_forget) it.print(forget_x, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_CENTER, "forget wifi");
+              else it.print(bar_x + bar_w, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_RIGHT, "update");
 
               it.rectangle(bar_x, bar_y, bar_w, bar_h, Color::BLACK);
               const int fill = (int) ((bar_w - 2) * (float) std::min<uint32_t>(held, update_ms) / update_ms);
               it.filled_rectangle(bar_x + 1, bar_y + 1, fill, bar_h - 2, Color::BLACK);
               // Tick at the setup threshold, reaching up to its label
               it.line(tick_x, bar_y - 4, tick_x, bar_y + bar_h - 1, Color::BLACK);
+              if (can_forget) it.line(forget_x, bar_y - 4, forget_x, bar_y + bar_h - 1, Color::BLACK);
             };
 
     - priority: 300
@@ -781,9 +917,13 @@ esphome:
             ap.set_ssid("InKli Config");
             ap.set_password(pass);
             id(wifi_id).set_ap(ap);
+            // No stored wifi (never set up, or forgotten): the fallback AP comes up after ap_timeout of
+            // not being connected, 90 s by default. Nobody wants to wait that long to set the device up.
+            if (id(wifi_id).get_sta().get_ssid().empty()) id(wifi_id).set_ap_timeout(5000);
     - priority: -100
       then:
         - lambda: id(scd30_ready) = true;
+        - script.execute: apply_temp_offset
         # The SCD30 driver always turns automatic calibration on in its own setup(); put the stored choice back
         - script.execute:
             id: apply_asc
@@ -866,5 +1006,8 @@ wifi:
   id: wifi_id
   on_connect:
     - display.page.show: page_co2_graph
+    - script.execute: apply_temp_offset
+  on_disconnect:
+    - script.execute: apply_temp_offset
   ap:
   reboot_timeout: 0s
