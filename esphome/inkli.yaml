@@ -304,12 +304,14 @@ script:
                   wifi.disable:
 
   # Forget the stored wifi credentials and restart. The ESPHome wifi component can only overwrite them,
-  # not erase them, so empty ones are stored; on the next boot the empty network can never connect, and
-  # the setup access point is brought up quickly (see the on_boot hook).
+  # not erase them. Empty credentials must NOT be stored: an empty SSID matches any network and an empty
+  # password matches any open one, so the InKli would join whatever open network is in range. A
+  # placeholder SSID with a password can never match a real network, so on the next boot nothing connects
+  # and the setup access point comes up (see the on_boot hook).
   - id: forget_wifi
     mode: single
     then:
-      - lambda: id(wifi_id).save_wifi_sta("", "");
+      - lambda: id(wifi_id).save_wifi_sta("forgotten-wifi", "forgotten-wifi");
       - display.page.show: page_wifi_forgotten
       - script.wait: refresh_display
       - wait_until:
