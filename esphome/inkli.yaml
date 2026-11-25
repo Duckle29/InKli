@@ -1,4 +1,6 @@
 substitutions:
+  # What forget wifi stores in place of the credentials (see forget_wifi)
+  forgotten_ssid: "forgotten-wifi"
   name: "inkli"
   friendly_name: "InKli"
   # Keep this as the bare word dev, written exactly like the line below: the publish workflow
@@ -311,7 +313,7 @@ script:
   - id: forget_wifi
     mode: single
     then:
-      - lambda: id(wifi_id).save_wifi_sta("forgotten-wifi", "forgotten-wifi");
+      - lambda: id(wifi_id).save_wifi_sta("${forgotten_ssid}", "${forgotten_ssid}");
       - display.page.show: page_wifi_forgotten
       - script.wait: refresh_display
       - wait_until:
@@ -921,7 +923,8 @@ esphome:
             id(wifi_id).set_ap(ap);
             // No stored wifi (never set up, or forgotten): the fallback AP comes up after ap_timeout of
             // not being connected, 90 s by default. Nobody wants to wait that long to set the device up.
-            if (id(wifi_id).get_sta().get_ssid().empty()) id(wifi_id).set_ap_timeout(5000);
+            const std::string &sta_ssid = id(wifi_id).get_sta().get_ssid();
+            if (sta_ssid.empty() || sta_ssid == "${forgotten_ssid}") id(wifi_id).set_ap_timeout(5000);
     - priority: -100
       then:
         - lambda: id(scd30_ready) = true;
