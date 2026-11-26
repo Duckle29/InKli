@@ -38,9 +38,23 @@ That's it! :) Your InKli should now be on your network.
 The hotspot only runs while the InKli isn't connected to a network. If it's already on wifi, the config screen shows
 "Connected to <your network>" instead of the hotspot details.
 
-To set it up on a different network, go to the config screen (hold the front button for 2 seconds, then push until you
-reach it), and hold the button for 4 seconds. The bar shows "forget wifi" at that point. Let go, and the InKli forgets
+To set it up on a different network, go to the config screen (hold the front button for 2 seconds), and hold the button for 4 seconds. The bar shows "forget wifi" at that point. Let go, and the InKli forgets
 the network and restarts. After a few seconds the "InKli Config" hotspot is back, and you can follow the steps above.
+
+## Clock
+Push the button to cycle through the CO2, temperature, humidity and clock screens.
+
+The InKli gets the time from the internet (NTP) when it's on wifi. You can also set it by hand:
+
+1. On the clock screen, hold the button for 4 seconds, until the bar reaches "set time", and let go.
+2. Push the button to count up the highlighted digit.
+3. Hold the button for 1 second to move to the next digit. Doing that on the last digit saves the time.
+
+If you leave it for 2 minutes without pressing the button, it goes back without changing the time.
+A time set by hand is forgotten when the InKli restarts, and is replaced by the internet time whenever that's available.
+
+The timezone defaults to Central Europe. To change it, or to turn off automatic daylight saving time, use the
+"Timezone" and "Automatic daylight saving time" entities in Home Assistant.
 
 ## Homeassistant
 If you're running a homeassistant setup on the network with your InKli, you should now be able to find your InKli there.

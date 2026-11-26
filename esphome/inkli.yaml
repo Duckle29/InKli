@@ -51,47 +51,88 @@ binary_sensor:
             - script.execute: redraw_after_release
       - script.execute: full_refresh_when_idle
     on_click:
+      # While setting the clock, a click counts the digit up and any hold of 1 s or more moves on
       - min_length: 50ms
         max_length: 350ms
         then:
-          - display.page.show_next: disp
+          - if:
+              condition:
+                lambda: return id(set_time_active);
+              then:
+                - script.execute: set_time_increment
+              else:
+                - display.page.show_next: disp
+
+      # Only used while setting the clock; ends just short of 2 s so one hold can't move on twice
+      - min_length: 1s
+        max_length: 1999ms
+        then:
+          - if:
+              condition:
+                lambda: return id(set_time_active);
+              then:
+                - script.execute: set_time_next
 
       - min_length: 2s
         max_length: 4s
         then:
-          - script.execute: toggle_setup
+          - if:
+              condition:
+                lambda: return id(set_time_active);
+              then:
+                - script.execute: set_time_next
+              else:
+                - script.execute: toggle_setup
 
-      # 4s: on the config screen while on wifi, forget the wifi credentials. Anywhere else this is
-      # still the setup toggle, same as the 2s step.
+      # 4s: forget wifi on the config screen while connected, set the time on the clock page.
+      # Anywhere else this is still the setup toggle, same as the 2s step.
       - min_length: 4s
         max_length: 6s
         then:
           - if:
               condition:
-                and:
-                  - display.is_displaying_page: ap_info
-                  - wifi.connected:
+                lambda: return id(set_time_active);
               then:
-                - script.execute: forget_wifi
+                - script.execute: set_time_next
               else:
-                - script.execute: toggle_setup
+                - if:
+                    condition:
+                      and:
+                        - display.is_displaying_page: ap_info
+                        - wifi.connected:
+                    then:
+                      - script.execute: forget_wifi
+                    else:
+                      - if:
+                          condition:
+                            display.is_displaying_page: page_clock
+                          then:
+                            - script.execute: set_time_start
+                          else:
+                            - script.execute: toggle_setup
 
       - min_length: 6s
         max_length: 60s
         then:
-          - display.page.show: page_updating
-          - script.wait: refresh_display
-          - wait_until:
+          - if:
               condition:
-                not:
-                  epaper_spi.is_updating: disp
-              timeout: 10s
-          - ota.http_request.flash:
-              md5_url: https://otaserv.mikkel.cc/inkli/${ota_file}.md5
-              url: https://otaserv.mikkel.cc/inkli/${ota_file}
-          - display.page.show: page_update_failed
-          - delay: 10s
-          - display.page.show: page_co2_graph
+                lambda: return id(set_time_active);
+              then:
+                - script.execute: set_time_next
+              else:
+                - display.page.show: page_updating
+                - script.wait: refresh_display
+                - wait_until:
+                    condition:
+                      not:
+                        epaper_spi.is_updating: disp
+                    timeout: 10s
+                - ota.http_request.flash:
+                    md5_url: https://otaserv.mikkel.cc/inkli/${ota_file}.md5
+                    url: https://otaserv.mikkel.cc/inkli/${ota_file}
+                - display.page.show: page_update_failed
+                - delay: 10s
+                - display.page.show: page_co2_graph
 
   # - platform: esp32_touch
   #   pin: GPIO33
@@ -155,6 +196,20 @@ sensor:
     filters:
       - lambda: return min(max(2 * (x+100.0), 0.0), 100.0);
   
+# NTP time. The timezone here is only what applies until apply_timezone has run at the end of boot.
+# Without wifi the time can be set by hand on the clock page; it is lost on a restart.
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+    on_time:
+      - seconds: 0
+        then:
+          - script.execute: redraw_clock
+    on_time_sync:
+      then:
+        - script.execute: redraw_clock
+
 text_sensor:
   - platform: wifi_info
     ip_address: 
@@ -237,7 +292,58 @@ number:
     icon: "mdi:molecule-co2"
     entity_category: "config"
 
+select:
+  # Matched by name in apply_timezone. The choice is stored by position, so add new zones at the end.
+  - platform: template
+    id: tz_select
+    name: "Timezone"
+    icon: "mdi:map-clock"
+    entity_category: "config"
+    optimistic: true
+    restore_value: true
+    initial_option: "Central Europe"
+    options:
+      - "UTC"
+      - "UK, Ireland, Portugal"
+      - "Central Europe"
+      - "Eastern Europe"
+      - "South Africa"
+      - "Turkey, Moscow"
+      - "UAE"
+      - "India"
+      - "Thailand, Vietnam"
+      - "China, Singapore, Perth"
+      - "Japan, Korea"
+      - "Darwin"
+      - "Adelaide"
+      - "Brisbane"
+      - "Sydney, Melbourne"
+      - "New Zealand"
+      - "Brazil East, Argentina"
+      - "Newfoundland"
+      - "Atlantic Canada"
+      - "US Eastern"
+      - "US Central"
+      - "Mexico City"
+      - "US Mountain"
+      - "Arizona"
+      - "US Pacific"
+      - "Alaska"
+      - "Hawaii"
+    on_value:
+      - script.execute: apply_timezone
+
 switch:
+  - platform: template
+    id: auto_dst
+    name: "Automatic daylight saving time"
+    icon: "mdi:sun-clock"
+    entity_category: "config"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state:
+      - script.execute: apply_timezone
+
   # The SCD30 corrects its own CO2 baseline over time. It assumes it sees fresh air (about 400 ppm) for
   # an hour or so each day, which is wrong in a room that is never aired, so it can be turned off here.
   # The ESPHome driver only sets this once at boot, so the switch sends the sensor command itself
@@ -352,6 +458,10 @@ script:
     mode: restart
     then:
       - delay: 5s
+      # Not while the time is being set
+      - wait_until:
+          condition:
+            lambda: return !id(set_time_active);
       - wait_until:
           condition:
             not:
@@ -403,6 +513,160 @@ script:
           } else {
             ESP_LOGW("temp_offset", "Could not set the temperature offset to %.2f K", offset);
           }
+
+  # Apply the chosen timezone, with its daylight saving rules unless automatic DST is off. ESPHome can
+  # only parse timezone strings at build time, so the zones are spelled out here.
+  - id: apply_timezone
+    mode: restart
+    then:
+      - lambda: |-
+          namespace et = esphome::time;  // spelled out: some of these names exist elsewhere too
+          enum class Dst : uint8_t { NONE, EU, US, AU, NZ };
+          struct Zone { const char *name; int16_t east_min; Dst dst; };
+          static const Zone zones[] = {
+          {"UTC", 0, Dst::NONE},
+          {"UK, Ireland, Portugal", 0, Dst::EU},
+          {"Central Europe", 60, Dst::EU},
+          {"Eastern Europe", 120, Dst::EU},
+          {"South Africa", 120, Dst::NONE},
+          {"Turkey, Moscow", 180, Dst::NONE},
+          {"UAE", 240, Dst::NONE},
+          {"India", 330, Dst::NONE},
+          {"Thailand, Vietnam", 420, Dst::NONE},
+          {"China, Singapore, Perth", 480, Dst::NONE},
+          {"Japan, Korea", 540, Dst::NONE},
+          {"Darwin", 570, Dst::NONE},
+          {"Adelaide", 570, Dst::AU},
+          {"Brisbane", 600, Dst::NONE},
+          {"Sydney, Melbourne", 600, Dst::AU},
+          {"New Zealand", 720, Dst::NZ},
+          {"Brazil East, Argentina", -180, Dst::NONE},
+          {"Newfoundland", -210, Dst::US},
+          {"Atlantic Canada", -240, Dst::US},
+          {"US Eastern", -300, Dst::US},
+          {"US Central", -360, Dst::US},
+          {"Mexico City", -360, Dst::NONE},
+          {"US Mountain", -420, Dst::US},
+          {"Arizona", -420, Dst::NONE},
+          {"US Pacific", -480, Dst::US},
+          {"Alaska", -540, Dst::US},
+          {"Hawaii", -600, Dst::NONE},
+          };
+          for (const auto &zone : zones) {
+            if (!(id(tz_select).current_option() == zone.name)) continue;
+            et::ParsedTimezone tz{};
+            // POSIX offsets count west of UTC as positive
+            tz.std_offset_seconds = -zone.east_min * 60;
+            tz.dst_offset_seconds = tz.std_offset_seconds - 3600;
+            // Month, week (5 = last), seconds after local midnight; all transitions are on a Sunday
+            auto rule = [](uint8_t month, uint8_t week, int32_t at) {
+              et::DSTRule r{};
+              r.type = et::DSTRuleType::MONTH_WEEK_DAY;
+              r.month = month;
+              r.week = week;
+              r.day_of_week = 0;
+              r.time_seconds = at;
+              return r;
+            };
+            if (id(auto_dst).state) {
+              // Europe changes at 01:00 UTC everywhere, so the local time depends on the zone
+              const int32_t eu_start = 3600 + zone.east_min * 60;
+              switch (zone.dst) {
+                case Dst::EU: tz.dst_start = rule(3, 5, eu_start); tz.dst_end = rule(10, 5, eu_start + 3600); break;
+                case Dst::US: tz.dst_start = rule(3, 2, 7200); tz.dst_end = rule(11, 1, 7200); break;
+                case Dst::AU: tz.dst_start = rule(10, 1, 7200); tz.dst_end = rule(4, 1, 10800); break;
+                case Dst::NZ: tz.dst_start = rule(9, 5, 7200); tz.dst_end = rule(4, 1, 10800); break;
+                case Dst::NONE: break;
+              }
+            }
+            et::set_global_tz(tz);
+            ESP_LOGI("tz", "Timezone %s, automatic DST %s", zone.name, id(auto_dst).state ? "on" : "off");
+            return;
+          }
+          ESP_LOGW("tz", "Unknown timezone");
+      - script.execute: redraw_clock
+
+  - id: redraw_clock
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - display.is_displaying_page: page_clock
+              # While the button is held the hold bar does its own redraws
+              - lambda: return id(btn_press_ms) == 0;
+          then:
+            - script.execute: refresh_display
+
+  # Setting the clock: start from the current time, or 00:00 if there is none
+  - id: set_time_start
+    then:
+      - lambda: |-
+          auto now = id(sntp_time).now();
+          const int hour = now.is_valid() ? now.hour : 0;
+          const int minute = now.is_valid() ? now.minute : 0;
+          id(set_time_digits)[0] = hour / 10;
+          id(set_time_digits)[1] = hour % 10;
+          id(set_time_digits)[2] = minute / 10;
+          id(set_time_digits)[3] = minute % 10;
+          id(set_time_pos) = 0;
+          id(set_time_active) = true;
+      - script.execute: set_time_timeout
+      - script.execute: refresh_display
+
+  - id: set_time_increment
+    then:
+      - lambda: |-
+          auto &d = id(set_time_digits);
+          const int pos = id(set_time_pos);
+          const int limit = pos == 0 ? 2 : pos == 1 ? (d[0] == 2 ? 3 : 9) : pos == 2 ? 5 : 9;
+          d[pos] = d[pos] >= limit ? 0 : d[pos] + 1;
+          if (d[0] == 2 && d[1] > 3) d[1] = 0;  // no 24:00 - 29:59
+      - script.execute: set_time_timeout
+      - script.execute: refresh_display
+
+  # Next digit; after the last one, set the clock and leave
+  - id: set_time_next
+    then:
+      - lambda: |-
+          if (id(set_time_pos) < 3) {
+            id(set_time_pos)++;
+            return;
+          }
+          const auto &d = id(set_time_digits);
+          // Keep today's date if it is known, as it decides whether daylight saving applies
+          ESPTime t = id(sntp_time).now();
+          if (!t.is_valid()) {
+            t = ESPTime{};
+            t.year = 2026;
+            t.month = 1;
+            t.day_of_month = 1;
+          }
+          t.day_of_week = 1;
+          t.day_of_year = 1;
+          t.hour = d[0] * 10 + d[1];
+          t.minute = d[2] * 10 + d[3];
+          t.second = 0;
+          t.recalc_timestamp_local();
+          struct timeval tv{};
+          tv.tv_sec = t.timestamp;
+          settimeofday(&tv, nullptr);
+          id(set_time_active) = false;
+          ESP_LOGI("clock", "Time set by hand to %02d:%02d", t.hour, t.minute);
+      - script.execute: set_time_timeout
+      - script.execute: refresh_display
+
+  # Give up on setting the time, without changing it, after 2 minutes without a button press
+  - id: set_time_timeout
+    mode: restart
+    then:
+      - delay: 2min
+      - if:
+          condition:
+            lambda: return id(set_time_active);
+          then:
+            - lambda: id(set_time_active) = false;
+            - script.execute: refresh_display
 
 output:
   - platform: ledc
@@ -538,7 +802,24 @@ font:
       family: IBM Plex Mono 
       weight: 400
     id: mono_smol
-    size: 13
+    size: 12
+
+  - file:
+      type: gfonts
+      family: Comfortaa
+      weight: 500
+    id: clock_font
+    size: 86  # about as big as "00:00" fits across the panel
+    glyphs: "0123456789:-"
+
+  # Smaller on the set time screen, which also has a title and has to clear the hold bar
+  - file:
+      type: gfonts
+      family: Comfortaa
+      weight: 500
+    id: clock_set_font
+    size: 72
+    glyphs: "0123456789:-"
 
 display:
   - platform: epaper_spi
@@ -723,6 +1004,52 @@ display:
           it.graph(graph_start_x, graph_start_y, id(humi_graph), Color::BLACK);
           if (id(draw_hold)) id(draw_hold)(it);
 
+      - id: page_clock
+        lambda: |-
+          char text[6] = "--:--";
+          const bool setting = id(set_time_active);
+          auto now = id(sntp_time).now();
+          if (setting) {
+            const auto &d = id(set_time_digits);
+            snprintf(text, sizeof(text), "%d%d:%d%d", d[0], d[1], d[2], d[3]);
+          } else if (now.is_valid()) {
+            snprintf(text, sizeof(text), "%02d:%02d", now.hour, now.minute);
+          }
+          if (!setting) {
+            it.print(it.get_width()/2, 95, id(clock_font), Color::BLACK, TextAlign::BASELINE_CENTER, text);
+          } else {
+            // Every digit gets a cell as wide as the widest one, so nothing shifts while counting
+            int digit_w = 0, colon_w, width, x_off, baseline, height;
+            for (char c = '0'; c <= '9'; c++) {
+              const char one[2] = {c, '\0'};
+              id(clock_set_font).measure(one, &width, &x_off, &baseline, &height);
+              digit_w = std::max(digit_w, width);
+            }
+            id(clock_set_font).measure(":", &colon_w, &x_off, &baseline, &height);
+            colon_w += 8;
+            // Higher than the normal clock, to stay clear of the hold bar
+            const int base_y = 82;
+            const int pos = id(set_time_pos);
+            const int editing = pos < 2 ? pos : pos + 1;  // skip the colon
+            int x = (it.get_width() - 4 * digit_w - colon_w) / 2;
+            for (int i = 0; i < 5; i++) {
+              const int cell_w = i == 2 ? colon_w : digit_w;
+              const char one[2] = {text[i], '\0'};
+              // The digit being edited is shown inverted
+              if (i == editing) it.filled_rectangle(x, base_y - 62, cell_w, 67, Color::BLACK);
+              it.print(x + cell_w / 2, base_y, id(clock_set_font), i == editing ? Color::WHITE : Color::BLACK,
+                       TextAlign::BASELINE_CENTER, one);
+              x += cell_w;
+            }
+            it.print(it.get_width()/2, 0, id(mono_med), Color::BLACK, TextAlign::TOP_CENTER, "Set time");
+            it.print(it.get_width()/2, it.get_height(), id(mono_smol), Color::BLACK, TextAlign::BOTTOM_CENTER,
+                     pos < 3 ? "click: +1   hold 1s: next" : "click: +1   hold 1s: done");
+          }
+          if (!setting && !now.is_valid()) {
+            it.print(it.get_width()/2, it.get_height(), id(mono_smol), Color::BLACK, TextAlign::BOTTOM_CENTER, "Time not set. Hold 4s");
+          }
+          if (id(draw_hold)) id(draw_hold)(it);
+
       - id: ap_info 
         lambda: |-
           if (id(wifi_id).is_connected())
@@ -851,8 +1178,8 @@ esphome:
         - lambda: |-
             // Set display page loop order
             /*
-                             |-> Co2 -> Temp -> Humi
-                             |    |______<______|
+                             |-> Co2 -> Temp -> Humi -> Clock
+                             |    |__________<____________|
               page_wifi_info-|
 
               ap_info -> page_setup -> page_info
@@ -870,11 +1197,12 @@ esphome:
 
             id(page_co2_graph).set_next(id(page_t_graph));
             id(page_t_graph).set_next(id(page_rh_graph));
-            id(page_rh_graph).set_next(id(page_co2_graph));
+            id(page_rh_graph).set_next(id(page_clock));
+            id(page_clock).set_next(id(page_co2_graph));
 
             id(page_updating).set_next(id(page_updating));
 
-        # Hold-progress bar. Bar fills over 6s. Ticks: 2s = Wi-Fi setup toggle, 4s = forget wifi (config screen while connected), 6s (end of bar) = firmware update.
+        # Hold-progress bar. Bar fills over 6s. Ticks: 1s = next digit (setting the clock), 2s = Wi-Fi setup toggle, 4s = forget wifi (connected config screen) or set time (clock), 6s (end of bar) = firmware update.
         # Keep these in sync with the min_length values of the btn on_click handlers.
         - lambda: |-
             id(draw_hold) = [](esphome::display::Display &it) {
@@ -887,7 +1215,9 @@ esphome:
               const int box_h = 34;
               const int y0 = it.get_height() - box_h;
               const int bar_x = 4, bar_w = w - 8, bar_y = y0 + 21, bar_h = 8;
-              const int tick_x = bar_x + (int) (bar_w * (float) setup_ms / update_ms);
+              // While setting the clock the first step (next digit) is at 1s instead
+              const uint32_t first_ms = id(set_time_active) ? 1000 : setup_ms;
+              const int tick_x = bar_x + (int) (bar_w * (float) first_ms / update_ms);
               const int forget_x = bar_x + (int) (bar_w * (float) forget_ms / update_ms);
 
               it.filled_rectangle(0, y0, w, box_h, Color::WHITE);
@@ -896,20 +1226,30 @@ esphome:
               // Labels sit above the bar: the 2s action over its tick, "update" at the end.
               // On the setup screens the 2s action leaves setup, so say where it goes.
               auto *page = id(disp).get_active_page();
+              const bool setting = id(set_time_active);
               const bool in_setup = page == id(ap_info) || page == id(page_setup) || page == id(page_info);
-              // Config screen while on wifi: the 4s step forgets the wifi credentials
+              // The 4s step only exists on the config screen while on wifi, and on the clock page
               const bool can_forget = page == id(ap_info) && id(wifi_id).is_connected();
-              it.print(tick_x, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_CENTER, in_setup ? "sensors" : "setup");
-              // No "update" label on the forget screen: it would sit right next to "forget wifi"
-              if (can_forget) it.print(forget_x, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_CENTER, "forget wifi");
-              else it.print(bar_x + bar_w, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_RIGHT, "update");
+              const bool can_set = !setting && page == id(page_clock);
+              // ("back" rather than "sensors" next to "forget wifi", which needs the room)
+              const char *first = setting ? (id(set_time_pos) < 3 ? "next" : "done")
+                                          : can_forget ? "back" : (in_setup ? "sensors" : "setup");
+              const char *second = can_forget ? "forget wifi" : (can_set ? "set time" : nullptr);
+
+              // Each label ends at its tick (or at the end of the bar)
+              auto step = [&](int x, const char *label) {
+                it.print(x + 1, y0 + 3, id(mono_smol), Color::BLACK, TextAlign::TOP_RIGHT, label);
+                it.line(x, bar_y - 4, x, bar_y + bar_h - 1, Color::BLACK);
+              };
 
               it.rectangle(bar_x, bar_y, bar_w, bar_h, Color::BLACK);
               const int fill = (int) ((bar_w - 2) * (float) std::min<uint32_t>(held, update_ms) / update_ms);
               it.filled_rectangle(bar_x + 1, bar_y + 1, fill, bar_h - 2, Color::BLACK);
-              // Tick at the setup threshold, reaching up to its label
-              it.line(tick_x, bar_y - 4, tick_x, bar_y + bar_h - 1, Color::BLACK);
-              if (can_forget) it.line(forget_x, bar_y - 4, forget_x, bar_y + bar_h - 1, Color::BLACK);
+
+              step(tick_x, first);
+              if (second != nullptr) step(forget_x, second);
+              // No "update" next to "forget wifi", and no update at all while setting the time
+              if (!setting && !can_forget) step(bar_x + bar_w - 1, "update");
             };
 
     - priority: 300
@@ -927,6 +1267,7 @@ esphome:
             if (sta_ssid.empty() || sta_ssid == "${forgotten_ssid}") id(wifi_id).set_ap_timeout(5000);
     - priority: -100
       then:
+        - script.execute: apply_timezone
         - lambda: id(scd30_ready) = true;
         - script.execute: apply_temp_offset
         # The SCD30 driver always turns automatic calibration on in its own setup(); put the stored choice back
@@ -950,6 +1291,16 @@ globals:
 
   - id: ap_password
     type: char[9]
+
+  # Setting the clock by hand (clock page): which of the four HH:MM digits is being counted up
+  - id: set_time_active
+    type: bool
+    initial_value: "false"
+  - id: set_time_pos
+    type: int
+    initial_value: "0"
+  - id: set_time_digits
+    type: int[4]
 
   # Button hold tracking (0 = not pressed), used for the hold-progress bar
   - id: btn_press_ms
@@ -1010,7 +1361,15 @@ api:
 wifi:
   id: wifi_id
   on_connect:
-    - display.page.show: page_co2_graph
+    # Leave the setup screens; any other page (the clock at night, say) stays when wifi reconnects
+    - if:
+        condition:
+          or:
+            - display.is_displaying_page: ap_info
+            - display.is_displaying_page: page_setup
+            - display.is_displaying_page: page_info
+        then:
+          - display.page.show: page_co2_graph
     - script.execute: apply_temp_offset
   on_disconnect:
     - script.execute: apply_temp_offset
