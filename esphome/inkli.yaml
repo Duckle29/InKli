@@ -168,16 +168,8 @@ sensor:
       name: "co2"
       accuracy_decimals: 0
       internal: False
-      on_value_range:
-        - above: 2000
-          then:
-            - output.set_level:
-                id: led_status
-                level: 50%
-            - output.turn_on: led_status
-        - below: 2000
-          then:
-            - output.turn_off: led_status
+      on_value:
+        - script.execute: apply_co2_led
 
     temperature:
       id: scd30_t
@@ -280,6 +272,25 @@ number:
     set_action:
       - lambda: id(temp_offset_nowifi).publish_state(x);
       - script.execute: apply_temp_offset
+
+  # How bright the CO2 warning LED is when it's lit (see apply_co2_led). 0 turns the warning off.
+  - platform: template
+    id: co2_led_brightness
+    name: "CO2 LED brightness"
+    icon: "mdi:led-on"
+    entity_category: "config"
+    restore_value: true
+    initial_value: 50
+    min_value: 0
+    max_value: 100
+    step: 5
+    unit_of_measurement: "%"
+    mode: slider
+    optimistic: false
+    set_action:
+      # As for the temperature offsets: publish first, so the script reads the new value
+      - lambda: id(co2_led_brightness).publish_state(x);
+      - script.execute: preview_co2_led
 
   - platform: template
     name: "CO2 manual calibration value"
@@ -469,6 +480,28 @@ script:
           timeout: 6s
       - epaper_spi.full_update_next: disp
       - component.update: disp
+
+  # Light the LED while the CO2 level is above 2000 ppm, or during a brightness preview. Run on every
+  # reading and by preview_co2_led. Perceived brightness isn't linear in duty cycle, so the percentage
+  # is gamma corrected.
+  - id: apply_co2_led
+    then:
+      - output.set_level:
+          id: led_status
+          level: !lambda |-
+            // The comparison is false before the first reading, so the LED stays off then
+            if (!id(co2_led_preview) && !(id(scd30_co2).state > 2000)) return 0.0f;
+            return powf(id(co2_led_brightness).state / 100.0f, 2.2f);
+
+  # Show a new brightness for a few seconds, whatever the CO2 level is. Changing it again restarts the time.
+  - id: preview_co2_led
+    mode: restart
+    then:
+      - lambda: id(co2_led_preview) = true;
+      - script.execute: apply_co2_led
+      - delay: 3s
+      - lambda: id(co2_led_preview) = false;
+      - script.execute: apply_co2_led
 
   # Send the SCD30 its automatic self calibration setting (command 0x5306) and read it back. The driver
   # does this once in its own setup(), which always turns it on, so nothing happens here until boot has
@@ -1291,6 +1324,11 @@ globals:
 
   - id: ap_password
     type: char[9]
+
+  # Set while preview_co2_led has the LED lit
+  - id: co2_led_preview
+    type: bool
+    initial_value: "false"
 
   # Setting the clock by hand (clock page): which of the four HH:MM digits is being counted up
   - id: set_time_active

@@ -63,4 +63,7 @@ The temperature offset can be calibrated from Home Assistant. There are two, "Te
 "Temperature offset (wifi not connected)", as the radio warms the case a bit when it's on. They're disabled by default,
 so enable the entities in Home Assistant if you want to adjust them.
 
+The LED lights up when the CO2 level is above 2000 ppm. Set how bright it is with "CO2 LED brightness", or set that to 0
+to keep it off. The LED lights up for a few seconds when you change the value, so you can see the new brightness.
+
 Further HA instructions to follow
